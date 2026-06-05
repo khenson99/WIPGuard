@@ -44,6 +44,12 @@ function formatNumber(value: unknown, unit?: string): string {
   return parsed.toLocaleString();
 }
 
+function dateLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
 function formatBenchmarkValue(
   value: unknown,
   unit: string,
@@ -105,10 +111,13 @@ function burnDetail(summary: CompanyTrackerDashboardData["summary"]): string {
 }
 
 function grossMarginDetail(summary: CompanyTrackerDashboardData["summary"]): string {
-  return `${formatCurrency(summary.grossMarginRevenue, summary.currency)} revenue / ${formatCurrency(
+  const base = `${formatCurrency(summary.grossMarginRevenue, summary.currency)} revenue / ${formatCurrency(
     summary.costOfGoodsSold,
     summary.currency,
   )} COGS`;
+  return summary.stripeProcessingFees !== null
+    ? `${base} incl. ${formatCurrency(summary.stripeProcessingFees, summary.currency)} Stripe fees`
+    : base;
 }
 
 function demoBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
@@ -245,6 +254,20 @@ function lineageSourcesLabel(value: unknown): string | null {
     .map((entry) => String(entry ?? "").trim())
     .filter((entry) => entry.length > 0);
   return sources.length > 0 ? sources.join(" · ") : null;
+}
+
+function metricEvidenceLabel(metric: CompanyTrackerMetric): string | null {
+  const parts: string[] = [];
+  const lineageCount = numberValue(metric.sourceLineageCount);
+  if (lineageCount !== null && lineageCount > 0) {
+    const count = Math.trunc(lineageCount);
+    parts.push(`${count} source ${count === 1 ? "record" : "records"}`);
+  }
+  const latestSourceCapturedAt = dateLabel(metric.latestSourceCapturedAt);
+  if (latestSourceCapturedAt) {
+    parts.push(`latest ${latestSourceCapturedAt}`);
+  }
+  return parts.length > 0 ? `Evidence ${parts.join(" · ")}` : null;
 }
 
 function statusClasses(status: string): string {
@@ -439,6 +462,7 @@ function SourceCoverageRow({ source }: { source: CompanySourceCoverage }) {
 function GrowthMetricCard({ metric, currency }: { metric: CompanyTrackerMetric; currency: string }) {
   const confidence = confidencePercent(metric.confidence);
   const lineage = lineageLabel(metric.sourceLineageCount);
+  const evidence = metricEvidenceLabel(metric);
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -454,6 +478,7 @@ function GrowthMetricCard({ metric, currency }: { metric: CompanyTrackerMetric; 
       <p className="mt-2 text-xs text-muted-foreground">
         Confidence {confidence.toFixed(0)}% · lineage {lineage}
       </p>
+      {evidence ? <p className="mt-2 text-xs text-muted-foreground">{evidence}</p> : null}
     </article>
   );
 }
@@ -462,6 +487,7 @@ function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
   const confidence = confidencePercent(metric.confidence);
   const lineage = lineageLabel(metric.sourceLineageCount);
   const lineageSources = lineageSourcesLabel(metric.sourceLineageKeys);
+  const evidence = metricEvidenceLabel(metric);
 
   return (
     <article className="rounded-lg border border-border bg-card p-4">
@@ -492,6 +518,9 @@ function TrustRow({ metric }: { metric: CompanyTrackerMetric }) {
         <p className="mt-3 break-words text-xs leading-5 text-muted-foreground">
           Sources {lineageSources}
         </p>
+      ) : null}
+      {evidence ? (
+        <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{evidence}</p>
       ) : null}
       {metric.warnings.length > 0 ? (
         <div className="mt-3 space-y-1 text-xs leading-5 text-muted-foreground">

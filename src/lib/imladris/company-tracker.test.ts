@@ -168,6 +168,7 @@ describe("buildCompanyTrackerDashboard", () => {
             rate: 78.4,
             revenue: 456_000,
             costOfGoodsSold: 98_500,
+            stripeProcessingFees: 12_000,
             currency: "USD",
           },
         }),
@@ -307,6 +308,7 @@ describe("buildCompanyTrackerDashboard", () => {
       grossMargin: 78.4,
       grossMarginRevenue: 456_000,
       costOfGoodsSold: 98_500,
+      stripeProcessingFees: 12_000,
       qualifiedPipeline: 1_000_000,
       qualifiedPipelineCount: 7,
       collaborationTouchCount: 5,
@@ -449,7 +451,7 @@ describe("buildCompanyTrackerDashboard", () => {
               sourceType: "raw",
               sourceId: "sub_2",
               rawRecordId: "raw_stripe_subscription_2",
-              capturedAt: new Date("2026-05-31T00:00:00.000Z"),
+              capturedAt: new Date("2026-06-01T03:15:00.000Z"),
               metadata: {},
             },
             {
@@ -474,6 +476,7 @@ describe("buildCompanyTrackerDashboard", () => {
     expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
       sourceLineageCount: 4,
       sourceLineageKeys: ["stripe", "hubspot"],
+      latestSourceCapturedAt: "2026-06-01T03:15:00.000Z",
     });
   });
 
@@ -731,6 +734,393 @@ describe("buildCompanyTrackerDashboard", () => {
         }),
       }),
     );
+  });
+
+  it("uses Webflow form submissions in live analytics conversion fallback", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "googleAnalytics",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            sessions30d: 1_000,
+          },
+        },
+        {
+          providerKey: "webflow",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            totalFormSubmissions: 25,
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      conversionRate: 2.5,
+      conversions: 25,
+      webflowFormSubmissions: 25,
+      websiteSessions: 1_000,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        rate: 2.5,
+        conversions: 25,
+        webflowFormSubmissions: 25,
+        websiteSessions: 1_000,
+        source: "analytics.snapshot_conversion",
+      }),
+      sourceLineageKeys: ["googleAnalytics", "webflow"],
+    });
+  });
+
+  it("uses Search Console clicks as conversion traffic when Google Analytics is absent", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "googleSearchConsole",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            clicks: 1_000,
+            impressions: 20_000,
+          },
+        },
+        {
+          providerKey: "webflow",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            totalFormSubmissions: 25,
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary).toMatchObject({
+      conversionRate: 2.5,
+      conversions: 25,
+      webflowFormSubmissions: 25,
+      websiteSessions: 1_000,
+      searchClicks: 1_000,
+    });
+    expect(dashboard.metrics.find((metric) => metric.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        rate: 2.5,
+        conversions: 25,
+        webflowFormSubmissions: 25,
+        websiteSessions: 1_000,
+        source: "analytics.snapshot_conversion",
+      }),
+      sourceLineageKeys: ["googleSearchConsole", "webflow"],
+    });
+  });
+
+  it("deduplicates live Stripe active customer refs before founder customer counts", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 2,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+              activeCustomerRefs: [
+                { customerId: "cus_shared", email: "billing@example.com", emailDomain: "example.com" },
+                { customerId: "cus_shared", email: "billing@example.com", emailDomain: "example.com" },
+              ],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 0,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 0,
+              noShows: 0,
+              demoScheduled: 0,
+              demoFollowUp: 0,
+              avgDealSize: 0,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [],
+            subscriptionDeals: [],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary.customers).toBe(1);
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.customer_count")).toMatchObject({
+      status: "partial",
+      value: expect.objectContaining({
+        count: 1,
+        activeCustomerRefs: 2,
+      }),
+    });
+  });
+
+  it("deduplicates live Stripe customer refs by shared HubSpot company metadata", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 2,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+              activeCustomerRefs: [
+                {
+                  customerId: "cus_billing_admin",
+                  email: "admin@example.com",
+                  emailDomain: "example.com",
+                  hubspotCompanyIds: ["company_shared"],
+                },
+                {
+                  customerId: "cus_billing_ops",
+                  email: "ops@example.com",
+                  emailDomain: "example.com",
+                  hubspotCompanyIds: ["company_shared"],
+                },
+              ],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 0,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 0,
+              noShows: 0,
+              demoScheduled: 0,
+              demoFollowUp: 0,
+              avgDealSize: 0,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [],
+            subscriptionDeals: [],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary.customers).toBe(1);
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.customer_count")).toMatchObject({
+      value: expect.objectContaining({
+        count: 1,
+        activeCustomerRefs: 2,
+      }),
+    });
+  });
+
+  it("reads snake_case Stripe active customer refs before founder customer counts", async () => {
+    const capturedAt = new Date("2026-05-31T20:00:00.000Z");
+    const prisma = prismaMock({
+      snapshots: [
+        {
+          providerKey: "stripe",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            revenue: {
+              mrr: 32_000,
+              mrrChange: 0,
+              totalRevenue30d: 37_000,
+              totalRevenuePrev30d: 34_000,
+              revenueGrowth: 0.08,
+              avgRevenuePerCustomer: 800,
+            },
+            subscriptions: {
+              active: 9,
+              pastDue: 0,
+              canceled: 0,
+              trialing: 0,
+              churnRate: 0.02,
+              recentChurnEvents: [],
+              active_customer_refs: [
+                { customer_id: "cus_shared", email: "billing@example.com", email_domain: "example.com" },
+                { customer_id: "cus_shared", email: "billing@example.com", email_domain: "example.com" },
+              ],
+            },
+            payments: {
+              succeeded: 20,
+              failed: 1,
+              successRate: 0.95,
+            },
+            revenueTrend: [],
+          },
+        },
+        {
+          providerKey: "hubspot",
+          status: "SUCCESS",
+          capturedAt,
+          expiresAt: new Date("2026-06-01T20:00:00.000Z"),
+          lastError: null,
+          payload: {
+            funnel: {
+              totalDeals: 0,
+              closedWon: 0,
+              closedLost: 0,
+              unlikely: 0,
+              churn: 0,
+              activeSubscriptions: 0,
+              noShows: 0,
+              demoScheduled: 0,
+              demoFollowUp: 0,
+              avgDealSize: 0,
+              winRate: 0,
+              effectiveWinRate: 0,
+              noShowRate: 0,
+              stages: [],
+              dealsBySource: [],
+            },
+            contacts: {
+              totalContacts: 0,
+              recentContacts: 0,
+              bySource: [],
+            },
+            deals: [],
+            subscriptionDeals: [],
+          },
+        },
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.summary.customers).toBe(1);
+    expect(dashboard.metrics.find((metric) => metric.key === "revenue.customer_count")).toMatchObject({
+      value: expect.objectContaining({
+        count: 1,
+        activeCustomerRefs: 2,
+      }),
+    });
   });
 
   it("ignores future-dated analytics snapshots when building live company metrics", async () => {

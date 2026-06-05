@@ -42,6 +42,24 @@ function sourceLineageLabel(value: string[] | undefined): string | null {
   return sources.length > 0 ? sources.join(" · ") : null;
 }
 
+function sourceLineageEvidenceLabel(metric: InvestorBoardMetric): string | null {
+  const parts: string[] = [];
+  const count = metric.sourceLineageCount;
+  if (typeof count === "number" && Number.isFinite(count) && count > 0) {
+    const roundedCount = Math.trunc(count);
+    parts.push(`${roundedCount} source ${roundedCount === 1 ? "record" : "records"}`);
+  }
+
+  if (metric.latestSourceCapturedAt) {
+    const latest = dateLabel(metric.latestSourceCapturedAt);
+    if (latest !== "Unknown") {
+      parts.push(`latest ${latest}`);
+    }
+  }
+
+  return parts.length > 0 ? `Evidence ${parts.join(" · ")}` : null;
+}
+
 function TrustBadge({ status }: { status: string | null }) {
   return (
     <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusClass(status)}`}>
@@ -67,6 +85,7 @@ function DriverCard({ driver }: { driver: InvestorHealthyArrGrowthDriver }) {
 function MetricCard({ metric }: { metric: InvestorBoardMetric }) {
   const delta = metric.delta === null ? null : metric.delta > 0 ? `+${metric.delta}` : `${metric.delta}`;
   const sources = sourceLineageLabel(metric.sourceLineageKeys);
+  const evidence = sourceLineageEvidenceLabel(metric);
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -83,6 +102,7 @@ function MetricCard({ metric }: { metric: InvestorBoardMetric }) {
         {delta ? `Delta ${delta}` : "Delta unavailable"} · as of {metric.asOf ? dateLabel(metric.asOf) : "Unknown"}
       </p>
       {sources ? <p className="mt-2 text-xs text-muted-foreground">Sources {sources}</p> : null}
+      {evidence ? <p className="mt-2 text-xs text-muted-foreground">{evidence}</p> : null}
     </article>
   );
 }

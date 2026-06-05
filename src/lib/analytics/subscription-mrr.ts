@@ -4,6 +4,7 @@ type StripeCustomerRef = {
   customerId?: string | null;
   email?: string | null;
   emailDomain?: string | null;
+  hubspotCompanyIds?: string[] | null;
 };
 
 type StripeLike = {
@@ -25,6 +26,7 @@ type HubSpotSubscriptionDealLike = {
   amount?: number | string | null;
   stripeCustomerId?: string | null;
   primaryContactEmail?: string | null;
+  companyIds?: string[] | null;
 };
 
 type HubSpotLike = {
@@ -47,6 +49,18 @@ const GENERIC_EMAIL_DOMAINS = new Set([
 function normalizeLookup(value: string | null | undefined): string | null {
   const normalized = value?.trim().toLowerCase() ?? "";
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeLookups(values: string[] | null | undefined): string[] {
+  const normalizedValues: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values ?? []) {
+    const normalized = normalizeLookup(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    normalizedValues.push(normalized);
+  }
+  return normalizedValues;
 }
 
 function normalizeStageKey(value: string | null | undefined): string | null {
@@ -128,6 +142,9 @@ export function buildSubscriptionMrrBreakdown(input: {
   const stripeDomains = new Set(
     stripeRefs.map((ref) => normalizeLookup(ref.emailDomain)).filter(Boolean) as string[],
   );
+  const stripeHubSpotCompanyIds = new Set(
+    stripeRefs.flatMap((ref) => normalizeLookups(ref.hubspotCompanyIds)),
+  );
 
   let hubspotOnlyActiveSubscriptions = 0;
   let hubspotOnlySubscriptionArr = 0;
@@ -139,10 +156,12 @@ export function buildSubscriptionMrrBreakdown(input: {
     const customerId = deal.stripeCustomerId?.trim() || null;
     const email = normalizeLookup(deal.primaryContactEmail);
     const emailDomain = normalizeEmailDomain(deal.primaryContactEmail);
+    const companyIds = normalizeLookups(deal.companyIds);
     const linkedToStripe =
       Boolean(customerId && stripeCustomerIds.has(customerId)) ||
       Boolean(email && stripeEmails.has(email)) ||
-      Boolean(emailDomain && stripeDomains.has(emailDomain));
+      Boolean(emailDomain && stripeDomains.has(emailDomain)) ||
+      companyIds.some((companyId) => stripeHubSpotCompanyIds.has(companyId));
 
     hubspotSubscriptionArr += amount;
     if (linkedToStripe) {

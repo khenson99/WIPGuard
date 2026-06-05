@@ -102,6 +102,7 @@ export interface CompanyTrackerMetric {
   periodEnd: string | null;
   sourceLineageCount: number;
   sourceLineageKeys?: string[];
+  latestSourceCapturedAt?: string;
 }
 
 export interface CompanyTrackerSummary {
@@ -119,6 +120,7 @@ export interface CompanyTrackerSummary {
   grossMargin: number | null;
   grossMarginRevenue: number | null;
   costOfGoodsSold: number | null;
+  stripeProcessingFees: number | null;
   qualifiedPipeline: number | null;
   qualifiedPipelineCount: number | null;
   collaborationTouchCount: number | null;
@@ -533,9 +535,88 @@ function arrayAtPath(value: unknown, path: string[]): unknown[] {
   return Array.isArray(target) ? target : [];
 }
 
+function firstArrayAtPath(value: unknown, paths: string[][]): unknown[] {
+  for (const path of paths) {
+    const entries = arrayAtPath(value, path);
+    if (entries.length > 0) return entries;
+  }
+  return [];
+}
+
 function countValue(value: unknown): number | null {
   const valueAsNumber = numberValue(value);
   return valueAsNumber === null ? null : Math.floor(Math.max(0, valueAsNumber));
+}
+
+function normalizedCustomerRefLookup(value: unknown): string | null {
+  const scalar = scalarValue(value);
+  if (typeof scalar === "number" && Number.isFinite(scalar)) return String(scalar).toLowerCase();
+  if (typeof scalar !== "string") return null;
+  const normalized = scalar.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "unknown customer" ? normalized : null;
+}
+
+function normalizedCustomerRefLookups(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(normalizedCustomerRefLookups);
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => normalizedCustomerRefLookup(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  const normalized = normalizedCustomerRefLookup(value);
+  return normalized ? [normalized] : [];
+}
+
+function hubspotCompanyRefIdentities(record: Record<string, unknown>): string[] {
+  const metadata = asRecord(record.metadata);
+  return [
+    record.hubspotCompanyIds,
+    record.hubspot_company_ids,
+    record.hubspotCompanyId,
+    record.hubspot_company_id,
+    metadata.hubspotCompanyIds,
+    metadata.hubspot_company_ids,
+    metadata.hubspotCompanyId,
+    metadata.hubspot_company_id,
+  ].flatMap((value) => normalizedCustomerRefLookups(value).map((id) => `hubspot-company:${id}`));
+}
+
+function activeCustomerRefIdentities(ref: unknown): string[] {
+  const record = asRecord(ref);
+  const customer = asRecord(record.customer);
+  const companyIdentities = [
+    ...hubspotCompanyRefIdentities(record),
+    ...hubspotCompanyRefIdentities(customer),
+  ];
+  if (companyIdentities.length > 0) return companyIdentities;
+
+  const identity =
+    normalizedCustomerRefLookup(record.customerId) ??
+    normalizedCustomerRefLookup(record.customer_id) ??
+    normalizedCustomerRefLookup(record.stripeCustomerId) ??
+    normalizedCustomerRefLookup(record.stripe_customer_id) ??
+    normalizedCustomerRefLookup(record.id) ??
+    normalizedCustomerRefLookup(customer.id) ??
+    normalizedCustomerRefLookup(record.email) ??
+    normalizedCustomerRefLookup(record.customerEmail) ??
+    normalizedCustomerRefLookup(record.customer_email) ??
+    normalizedCustomerRefLookup(customer.email);
+  return identity ? [identity] : [];
+}
+
+function uniqueActiveCustomerRefCount(refs: unknown[]): number {
+  let anonymousRefs = 0;
+  const identities = new Set<string>();
+  for (const ref of refs) {
+    const refIdentities = activeCustomerRefIdentities(ref);
+    if (refIdentities.length > 0) {
+      refIdentities.forEach((identity) => identities.add(identity));
+    } else {
+      anonymousRefs += 1;
+    }
+  }
+  return identities.size + anonymousRefs;
 }
 
 function currencyFrom(...values: Array<Record<string, unknown>>): string {
@@ -1198,9 +1279,12 @@ function activeSubscriptionFallback(analyticsStats: CompanyAnalyticsStats): Reco
 function customerCountFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
   if (!hasAnalyticsProvider(analyticsStats, "stripe", "hubspot")) return null;
   const stripePayload = snapshotPayload(analyticsStats, "stripe");
-  const activeCustomerRefs = arrayAtPath(stripePayload, ["subscriptions", "activeCustomerRefs"]);
+  const activeCustomerRefs = firstArrayAtPath(stripePayload, [
+    ["subscriptions", "activeCustomerRefs"],
+    ["subscriptions", "active_customer_refs"],
+  ]);
   const count = activeCustomerRefs.length > 0
-    ? activeCustomerRefs.length
+    ? uniqueActiveCustomerRefCount(activeCustomerRefs)
     : analyticsStats.metricsLayer.finance.summary.activeSubscriptions;
   return {
     count,
@@ -1289,36 +1373,78 @@ function websiteTrafficFallback(analyticsStats: CompanyAnalyticsStats): Record<s
   }
   const gaPayload = snapshotPayload(analyticsStats, "googleAnalytics");
   const gscPayload = snapshotPayload(analyticsStats, "googleSearchConsole");
+  const searchClicks = firstNumberAtPath(gscPayload, [["clicks"], ["totalClicks"], ["summary", "clicks"]]);
   const count =
     firstNumberAtPath(gaPayload, [["sessions30d"], ["sessions"], ["summary", "sessions"]]) ??
-    firstNumberAtPath(gscPayload, [["clicks"], ["totalClicks"], ["summary", "clicks"]]);
+    searchClicks;
   if (count === null) return null;
   return {
     count,
     websiteSessions: count,
+    searchClicks,
     source: "analytics.snapshot_website_traffic",
   };
 }
 
+function webflowFormSubmissionFallbackCount(payload: unknown): number | null {
+  const directCount = firstNumberAtPath(payload, [
+    ["totalFormSubmissions"],
+    ["total_form_submissions"],
+    ["formSubmissions"],
+    ["form_submissions"],
+    ["summary", "totalFormSubmissions"],
+    ["summary", "total_form_submissions"],
+    ["summary", "formSubmissions"],
+    ["summary", "form_submissions"],
+  ]);
+  if (directCount !== null) return Math.floor(Math.max(0, directCount));
+
+  const formSubmissions = firstArrayAtPath(payload, [
+    ["formSubmissions"],
+    ["form_submissions"],
+    ["forms"],
+    ["summary", "formSubmissions"],
+    ["summary", "form_submissions"],
+  ]);
+  if (formSubmissions.length === 0) return null;
+
+  return formSubmissions.reduce<number>((sum, submission) => {
+    const count =
+      firstNumberAtPath(submission, [["count"], ["submissions"], ["totalSubmissions"], ["total_submissions"]]) ??
+      1;
+    return sum + Math.floor(Math.max(0, count));
+  }, 0);
+}
+
 function conversionRateFallback(analyticsStats: CompanyAnalyticsStats): Record<string, unknown> | null {
-  if (!hasAnalyticsProvider(analyticsStats, "googleAnalytics")) return null;
+  if (!hasAnalyticsProvider(analyticsStats, "googleAnalytics", "googleSearchConsole")) return null;
   const hubspotPayload = snapshotPayload(analyticsStats, "hubspot");
   const gaPayload = snapshotPayload(analyticsStats, "googleAnalytics");
-  const websiteSessions = firstNumberAtPath(gaPayload, [["sessions30d"], ["sessions"], ["summary", "sessions"]]);
+  const gscPayload = snapshotPayload(analyticsStats, "googleSearchConsole");
+  const webflowPayload = snapshotPayload(analyticsStats, "webflow");
+  const searchClicks = firstNumberAtPath(gscPayload, [["clicks"], ["totalClicks"], ["summary", "clicks"]]);
+  const websiteSessions =
+    firstNumberAtPath(gaPayload, [["sessions30d"], ["sessions"], ["summary", "sessions"]]) ??
+    searchClicks;
+  const hubspotLeadConversions = firstNumberAtPath(hubspotPayload, [
+    ["collectedForms", "totalFormSubmissions"],
+    ["funnel", "collectedFormSubmissions"],
+    ["totalFormSubmissions"],
+    ["summary", "conversions"],
+  ]);
+  const webflowFormSubmissions = webflowFormSubmissionFallbackCount(webflowPayload);
   const conversions =
-    firstNumberAtPath(hubspotPayload, [
-      ["collectedForms", "totalFormSubmissions"],
-      ["funnel", "collectedFormSubmissions"],
-      ["totalFormSubmissions"],
-      ["summary", "conversions"],
-    ]) ??
-    paidAcquisitionSummary(analyticsStats)?.conversions ??
-    null;
+    hubspotLeadConversions !== null || webflowFormSubmissions !== null
+      ? (hubspotLeadConversions ?? 0) + (webflowFormSubmissions ?? 0)
+      : paidAcquisitionSummary(analyticsStats)?.conversions ?? null;
   if (websiteSessions === null || websiteSessions <= 0 || conversions === null) return null;
   return {
     rate: round((conversions / websiteSessions) * 100, 2),
     conversions,
     websiteSessions,
+    hubspotLeadConversions: hubspotLeadConversions ?? 0,
+    webflowFormSubmissions: webflowFormSubmissions ?? 0,
+    searchClicks,
     source: "analytics.snapshot_conversion",
   };
 }
@@ -1583,6 +1709,7 @@ function companyMetric(
         periodEnd: analyticsStats?.latestCapturedAt ?? null,
         sourceLineageCount: analyticsStats?.snapshotCount ?? 0,
         sourceLineageKeys: analyticsStats ? [...analyticsStats.availableProviders].sort() : [],
+        ...(analyticsStats?.latestCapturedAt ? { latestSourceCapturedAt: analyticsStats.latestCapturedAt } : {}),
       };
     }
 
@@ -1601,6 +1728,7 @@ function companyMetric(
       sourceLineageKeys: [],
     };
   }
+  const latestSourceCapturedAt = latestLineageCapturedAt(row.lineage);
   return {
     key,
     label: definition?.label ?? key,
@@ -1614,7 +1742,15 @@ function companyMetric(
     periodEnd: toIso(row.periodEnd),
     sourceLineageCount: row.lineage?.length ?? 0,
     sourceLineageKeys: lineageSourceKeys(row.lineage),
+    ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
   };
+}
+
+function latestLineageCapturedAt(lineage: MetricLineageRow[] | undefined): string | null {
+  const timestamps = (lineage ?? [])
+    .map((entry) => toIso(entry.capturedAt))
+    .filter((timestamp): timestamp is string => Boolean(timestamp));
+  return timestamps.sort().at(-1) ?? null;
 }
 
 function lineageSourceKeys(lineage: MetricLineageRow[] | undefined): string[] {
@@ -1743,6 +1879,9 @@ function buildSummary(
       null,
     costOfGoodsSold:
       numberFromFields(grossMargin, "costOfGoodsSold", "cost_of_goods_sold", "cogs") ??
+      null,
+    stripeProcessingFees:
+      numberFromFields(grossMargin, "stripeProcessingFees", "stripe_processing_fees", "stripeFees", "stripe_fees") ??
       null,
     qualifiedPipeline:
       numberValue(pipeline.amount) ??

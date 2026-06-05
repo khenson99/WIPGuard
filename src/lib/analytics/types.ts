@@ -463,6 +463,7 @@ export interface SubscriptionMetrics {
     customerId: string;
     email: string | null;
     emailDomain: string | null;
+    hubspotCompanyIds?: string[];
   }>;
 }
 
@@ -484,6 +485,8 @@ export interface StripeObjectDetails {
   invoices: Record<string, unknown>[];
   disputes: Record<string, unknown>[];
   refunds: Record<string, unknown>[];
+  paymentIntents: Record<string, unknown>[];
+  balanceTransactions: Record<string, unknown>[];
 }
 
 export interface StripeData {

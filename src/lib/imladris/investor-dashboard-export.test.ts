@@ -112,6 +112,7 @@ describe("buildInvestorDashboardExport", () => {
             rate: 84,
             revenue: 50_000,
             costOfGoodsSold: 8_000,
+            stripeProcessingFees: 1_500,
             currency: "USD",
           }),
           metric("sales.qualified_pipeline", {
@@ -298,6 +299,7 @@ describe("buildInvestorDashboardExport", () => {
       grossMargin: 84,
       grossMarginRevenue: 50_000,
       costOfGoodsSold: 8_000,
+      stripeProcessingFees: 1_500,
       qualifiedPipelineCount: 1,
       collaborationTouchCount: 2,
       collaborationCoverage: 1,
@@ -551,6 +553,1619 @@ describe("buildInvestorDashboardExport", () => {
     });
 
     expect(result.summary.activeSubscriptions).toBe(2);
+  });
+
+  it("derives investor customer counts from raw active Stripe customer evidence when canonical customer counts are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_customer_primary",
+            provider: "STRIPE",
+            objectType: "subscription",
+            externalId: "sub_primary",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_primary",
+              customerEmail: "billing@example.com",
+            },
+          },
+          {
+            id: "raw_stripe_subscription_customer_duplicate",
+            provider: "STRIPE",
+            objectType: "subscription",
+            externalId: "sub_duplicate",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-11T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_primary",
+              customerEmail: "billing@example.com",
+            },
+          },
+          {
+            id: "raw_stripe_active_customer_ref_secondary",
+            provider: "STRIPE",
+            objectType: "active_customer_ref",
+            externalId: "cus_secondary",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T00:00:00.000Z"),
+            payload: {
+              customer_id: "cus_secondary",
+              email: "ops@example.net",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.customers).toBe(2);
+    expect(result.summary.stripeCustomers).toBe(2);
+    expect(result.summary.hubspotOnlyCustomers).toBe(0);
+  });
+
+  it("surfaces raw-derived customer count metrics with lineage when canonical customer counts are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_metric_customer_primary",
+            provider: "STRIPE",
+            objectType: "subscription",
+            externalId: "sub_metric_primary",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_metric_primary",
+              customerEmail: "billing@example.com",
+            },
+          },
+          {
+            id: "raw_stripe_metric_customer_secondary",
+            provider: "STRIPE",
+            objectType: "active_customer_ref",
+            externalId: "cus_metric_secondary",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T00:00:00.000Z"),
+            payload: {
+              customer_id: "cus_metric_secondary",
+              email: "ops@example.net",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.metrics.find((entry) => entry.key === "revenue.customer_count")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 2,
+        stripeCustomers: 2,
+        hubspotOnlyCustomers: 0,
+        source: "raw_source_records",
+      },
+      warnings: ["Canonical Imladris materialization is missing for this metric; using raw source fallback."],
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "sub_metric_primary",
+          rawRecordId: "raw_stripe_metric_customer_primary",
+        }),
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "cus_metric_secondary",
+          rawRecordId: "raw_stripe_metric_customer_secondary",
+        }),
+      ],
+    });
+    expect(result.metrics.find((entry) => entry.key === "revenue.active_subscriptions")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 2,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          rawRecordId: "raw_stripe_metric_customer_primary",
+        }),
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          rawRecordId: "raw_stripe_metric_customer_secondary",
+        }),
+      ],
+    });
+  });
+
+  it("surfaces raw-derived Stripe revenue when canonical revenue is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_paid_charge_revenue",
+            provider: "STRIPE",
+            objectType: "charge",
+            externalId: "ch_paid_revenue",
+            occurredAt: new Date("2026-02-12T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T10:00:00.000Z"),
+            payload: {
+              status: "succeeded",
+              amount: 250_000,
+              amount_refunded: 50_000,
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_stripe_failed_charge_revenue",
+            provider: "STRIPE",
+            objectType: "charge",
+            externalId: "ch_failed_revenue",
+            occurredAt: new Date("2026-02-13T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-13T10:00:00.000Z"),
+            payload: {
+              status: "failed",
+              amount: 900_000,
+              currency: "usd",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.totalRevenue).toBe(2_000);
+    expect(result.weekly).toEqual([
+      {
+        week: "2026-02-09",
+        demos: 0,
+        customers: 0,
+        revenue: 2_000,
+      },
+    ]);
+    expect(result.metrics.find((entry) => entry.key === "revenue.total_revenue")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 2_000,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "ch_paid_revenue",
+          rawRecordId: "raw_stripe_paid_charge_revenue",
+        }),
+      ],
+    });
+  });
+
+  it("surfaces raw-derived Stripe invoice subscription and services revenue when canonical component revenue is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_paid_invoice_components",
+            provider: "STRIPE",
+            objectType: "invoice",
+            externalId: "in_components",
+            occurredAt: new Date("2026-02-12T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T10:00:00.000Z"),
+            payload: {
+              id: "in_components",
+              status: "paid",
+              paid: true,
+              currency: "usd",
+              lines: {
+                data: [
+                  {
+                    id: "il_subscription",
+                    amount: 120_000,
+                    description: "Monthly subscription",
+                    price: {
+                      id: "price_subscription",
+                      recurring: { interval: "month", interval_count: 1 },
+                    },
+                  },
+                  {
+                    id: "il_services",
+                    amount: 75_000,
+                    description: "Implementation services",
+                    price: {
+                      id: "price_services",
+                      type: "one_time",
+                      product: {
+                        id: "prod_services",
+                        name: "Implementation Services",
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: "raw_stripe_unpaid_services_invoice_components",
+            provider: "STRIPE",
+            objectType: "invoice",
+            externalId: "in_unpaid_components",
+            occurredAt: new Date("2026-02-13T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-13T10:00:00.000Z"),
+            payload: {
+              id: "in_unpaid_components",
+              status: "open",
+              paid: false,
+              currency: "usd",
+              lines: {
+                data: [
+                  {
+                    id: "il_unpaid_services",
+                    amount: 900_000,
+                    description: "Implementation services",
+                    price: { type: "one_time" },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.totalRevenue).toBe(1_950);
+    expect(result.summary.subscriptionRevenue).toBe(1_200);
+    expect(result.summary.servicesRevenue).toBe(750);
+    expect(result.metrics.find((entry) => entry.key === "revenue.total_revenue")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 1_950,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "in_components",
+          rawRecordId: "raw_stripe_paid_invoice_components",
+        }),
+      ],
+    });
+    expect(result.metrics.find((entry) => entry.key === "revenue.subscription_revenue")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 1_200,
+        currency: "USD",
+        stripeInvoiceLines: 1,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "in_components",
+          rawRecordId: "raw_stripe_paid_invoice_components",
+        }),
+      ],
+    });
+    expect(result.metrics.find((entry) => entry.key === "revenue.services_revenue")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 750,
+        currency: "USD",
+        stripeServiceInvoices: 1,
+        stripeServiceInvoiceLines: 1,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          sourceId: "in_components",
+          rawRecordId: "raw_stripe_paid_invoice_components",
+        }),
+      ],
+    });
+  });
+
+  it("surfaces raw-derived Mercury finance metrics when canonical finance metrics are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_mercury_operating_balance",
+            provider: "MERCURY",
+            objectType: "account_balance",
+            externalId: "balance_operating",
+            occurredAt: new Date("2026-02-28T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-28T00:00:00.000Z"),
+            payload: {
+              accountId: "operating",
+              currentBalance: 70_000,
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_mercury_treasury_balance",
+            provider: "MERCURY",
+            objectType: "account_balance",
+            externalId: "balance_treasury",
+            occurredAt: new Date("2026-02-28T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-28T00:00:00.000Z"),
+            payload: {
+              accountId: "treasury",
+              available_balance: 30_000,
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_mercury_payroll",
+            provider: "MERCURY",
+            objectType: "transaction",
+            externalId: "txn_payroll",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              transactionId: "txn_payroll",
+              amount: -50_000,
+              category: "payroll",
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_mercury_hosting",
+            provider: "MERCURY",
+            objectType: "transaction",
+            externalId: "txn_hosting",
+            occurredAt: new Date("2026-02-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-16T00:00:00.000Z"),
+            payload: {
+              transactionId: "txn_hosting",
+              amount: -10_000,
+              category: "hosting",
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_mercury_customer_payment",
+            provider: "MERCURY",
+            objectType: "transaction",
+            externalId: "txn_customer_payment",
+            occurredAt: new Date("2026-02-17T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-17T00:00:00.000Z"),
+            payload: {
+              transactionId: "txn_customer_payment",
+              amount: 20_000,
+              category: "customer_payment",
+              currency: "usd",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.cashBalance).toBe(100_000);
+    expect(result.summary.cashOutflow).toBe(60_000);
+    expect(result.summary.cashInflow).toBe(20_000);
+    expect(result.summary.netBurn).toBe(40_000);
+    expect(result.summary.runwayMonths).toBe(2.5);
+    expect(result.summary.expenses).toBe(60_000);
+    expect(result.metrics.find((entry) => entry.key === "finance.cash_balance")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 100_000,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "mercury",
+          sourceType: "raw",
+          rawRecordId: "raw_mercury_operating_balance",
+        }),
+        expect.objectContaining({
+          sourceKey: "mercury",
+          sourceType: "raw",
+          rawRecordId: "raw_mercury_treasury_balance",
+        }),
+      ]),
+    });
+    expect(result.metrics.find((entry) => entry.key === "finance.net_burn")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 40_000,
+        cashOutflow: 60_000,
+        cashInflow: 20_000,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+    });
+    expect(result.metrics.find((entry) => entry.key === "finance.cash_runway_months")).toMatchObject({
+      status: "partial",
+      value: {
+        months: 2.5,
+        cashBalance: 100_000,
+        netBurn: 40_000,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+    });
+    expect(result.metrics.find((entry) => entry.key === "finance.expenses")).toMatchObject({
+      status: "partial",
+      value: {
+        amount: 60_000,
+        cashOutflow: 60_000,
+        expenseTransactions: 2,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+    });
+  });
+
+  it("surfaces raw-derived gross margin from invoice revenue, Mercury COGS, and Stripe fees", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_gross_margin_invoice",
+            provider: "STRIPE",
+            objectType: "invoice",
+            externalId: "in_gross_margin",
+            occurredAt: new Date("2026-02-12T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T10:00:00.000Z"),
+            payload: {
+              id: "in_gross_margin",
+              status: "paid",
+              paid: true,
+              currency: "usd",
+              lines: {
+                data: [
+                  {
+                    id: "il_subscription_margin",
+                    amount: 3_000_000,
+                    description: "Annual subscription",
+                    price: {
+                      recurring: { interval: "year", interval_count: 1 },
+                    },
+                  },
+                  {
+                    id: "il_services_margin",
+                    amount: 2_000_000,
+                    description: "Implementation services",
+                    price: {
+                      type: "one_time",
+                      product: { name: "Implementation Services" },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: "raw_mercury_gross_margin_cogs",
+            provider: "MERCURY",
+            objectType: "transaction",
+            externalId: "txn_gross_margin_cogs",
+            occurredAt: new Date("2026-02-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-16T00:00:00.000Z"),
+            payload: {
+              transactionId: "txn_gross_margin_cogs",
+              amount: -8_000,
+              category: "hosting_cogs",
+              currency: "usd",
+            },
+          },
+          {
+            id: "raw_stripe_gross_margin_fee",
+            provider: "STRIPE",
+            objectType: "balance_transaction",
+            externalId: "txn_stripe_fee_margin",
+            occurredAt: new Date("2026-02-18T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-18T00:00:00.000Z"),
+            payload: {
+              id: "txn_stripe_fee_margin",
+              source: "ch_margin",
+              fee: 120_000,
+              currency: "usd",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.grossMargin).toBe(81.6);
+    expect(result.summary.grossMarginRevenue).toBe(50_000);
+    expect(result.summary.costOfGoodsSold).toBe(9_200);
+    expect(result.summary.stripeProcessingFees).toBe(1_200);
+    expect(result.metrics.find((entry) => entry.key === "finance.gross_margin")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 81.6,
+        revenue: 50_000,
+        costOfGoodsSold: 9_200,
+        stripeProcessingFees: 1_200,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          rawRecordId: "raw_stripe_gross_margin_invoice",
+        }),
+        expect.objectContaining({
+          sourceKey: "mercury",
+          sourceType: "raw",
+          rawRecordId: "raw_mercury_gross_margin_cogs",
+        }),
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          rawRecordId: "raw_stripe_gross_margin_fee",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived Search Console website traffic when canonical traffic is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_gsc_search_traffic",
+            provider: "GOOGLE_SEARCH_CONSOLE",
+            objectType: "search_analytics_row",
+            externalId: "gsc:query:imladris",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              query: "imladris metrics",
+              page: "https://example.com/imladris",
+              clicks: 321,
+              impressions: 5_432,
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining(["GOOGLE_SEARCH_CONSOLE"]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.websiteTraffic).toBe(321);
+    expect(result.summary.websiteSessions).toBe(321);
+    expect(result.summary.searchClicks).toBe(321);
+    expect(result.summary.searchImpressions).toBe(5_432);
+    expect(result.metrics.find((entry) => entry.key === "marketing.website_traffic")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 321,
+        websiteSessions: 321,
+        organicTraffic: 0,
+        searchClicks: 321,
+        searchImpressions: 5_432,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "google_search_console",
+          sourceType: "raw",
+          sourceId: "gsc:query:imladris",
+          rawRecordId: "raw_gsc_search_traffic",
+        }),
+      ],
+    });
+  });
+
+  it("surfaces raw-derived Webflow conversion rate when canonical conversion is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_gsc_conversion_sessions",
+            provider: "GOOGLE_SEARCH_CONSOLE",
+            objectType: "search_analytics_row",
+            externalId: "gsc:conversion:sessions",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              query: "imladris metrics",
+              clicks: 400,
+              impressions: 8_000,
+            },
+          },
+          {
+            id: "raw_webflow_conversion_demo",
+            provider: "WEBFLOW",
+            objectType: "form_submission",
+            externalId: "webflow:submission:demo",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              submissionId: "demo",
+              formName: "Request a Demo",
+              email: "founder@example.com",
+            },
+          },
+          {
+            id: "raw_webflow_conversion_contact",
+            provider: "WEBFLOW",
+            objectType: "form_submission",
+            externalId: "webflow:submission:contact",
+            occurredAt: new Date("2026-02-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-16T00:00:00.000Z"),
+            payload: {
+              submissionId: "contact",
+              formName: "Contact Us",
+              email: "ops@example.com",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.conversionRate).toBe(0.5);
+    expect(result.summary.conversions).toBe(2);
+    expect(result.summary.webflowFormSubmissions).toBe(2);
+    expect(result.summary.websiteSessions).toBe(400);
+    expect(result.metrics.find((entry) => entry.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 0.5,
+        conversions: 2,
+        websiteSessions: 400,
+        webflowFormSubmissions: 2,
+        hubspotLeadConversions: 0,
+        identifiedVisitors: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "google_search_console",
+          sourceType: "raw",
+          rawRecordId: "raw_gsc_conversion_sessions",
+        }),
+        expect.objectContaining({
+          sourceKey: "webflow",
+          sourceType: "raw",
+          rawRecordId: "raw_webflow_conversion_demo",
+        }),
+        expect.objectContaining({
+          sourceKey: "webflow",
+          sourceType: "raw",
+          rawRecordId: "raw_webflow_conversion_contact",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived HubSpot lead conversions when canonical conversion is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_gsc_hubspot_conversion_sessions",
+            provider: "GOOGLE_SEARCH_CONSOLE",
+            objectType: "search_analytics_row",
+            externalId: "gsc:hubspot-conversion:sessions",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              query: "imladris investor metrics",
+              clicks: 400,
+              impressions: 8_000,
+            },
+          },
+          {
+            id: "raw_hubspot_contact_conversion",
+            provider: "HUBSPOT",
+            objectType: "contact",
+            externalId: "hubspot:contact:ada",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "contact_ada",
+              email: "ada@example.com",
+              createdate: "2026-02-15T00:00:00.000Z",
+              lifecyclestage: "lead",
+            },
+          },
+          {
+            id: "raw_hubspot_lead_conversion",
+            provider: "HUBSPOT",
+            objectType: "lead",
+            externalId: "hubspot:lead:grace",
+            occurredAt: new Date("2026-02-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-16T00:00:00.000Z"),
+            payload: {
+              id: "lead_grace",
+              properties: {
+                email: "grace@example.com",
+                createdate: "2026-02-16T00:00:00.000Z",
+                lifecycleStage: "marketingqualifiedlead",
+              },
+            },
+          },
+          {
+            id: "raw_hubspot_duplicate_contact_conversion",
+            provider: "HUBSPOT",
+            objectType: "contact",
+            externalId: "hubspot:contact:ada-alias",
+            occurredAt: new Date("2026-02-17T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-17T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "contact_ada_alias",
+              createdate: "2026-02-17T00:00:00.000Z",
+              lifecyclestage: "salesqualifiedlead",
+              contact: {
+                emailAddress: "ada@example.com",
+              },
+            },
+          },
+          {
+            id: "raw_hubspot_subscriber_not_conversion",
+            provider: "HUBSPOT",
+            objectType: "contact",
+            externalId: "hubspot:contact:newsletter",
+            occurredAt: new Date("2026-02-18T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-18T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "contact_newsletter",
+              email: "newsletter@example.com",
+              createdate: "2026-02-18T00:00:00.000Z",
+              lifecyclestage: "subscriber",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.conversionRate).toBe(0.5);
+    expect(result.summary.conversions).toBe(2);
+    expect(result.summary.hubspotLeadConversions).toBe(2);
+    expect(result.summary.webflowFormSubmissions).toBe(0);
+    expect(result.summary.websiteSessions).toBe(400);
+    expect(result.metrics.find((entry) => entry.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 0.5,
+        conversions: 2,
+        websiteSessions: 400,
+        webflowFormSubmissions: 0,
+        hubspotLeadConversions: 2,
+        identifiedVisitors: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "google_search_console",
+          sourceType: "raw",
+          rawRecordId: "raw_gsc_hubspot_conversion_sessions",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_contact_conversion",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_lead_conversion",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived marketing pipeline efficiency when canonical pipeline efficiency is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_google_ads_pipeline_spend",
+            provider: "GOOGLE_ADS",
+            objectType: "campaign_metric",
+            externalId: "google-ads:campaign:brand:2026-02-14",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              customerId: "google_ads_account",
+              campaignId: "brand",
+              date: "2026-02-14",
+              costMicros: 1_000_000_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_meta_ads_pipeline_spend",
+            provider: "META_ADS",
+            objectType: "ad_set_metric",
+            externalId: "meta:adset:retargeting:2026-02-14",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              adAccountId: "meta_account",
+              adSetId: "retargeting",
+              date: "2026-02-14",
+              spend: 500,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_reddit_pipeline_spend",
+            provider: "REDDIT",
+            objectType: "campaign_metric",
+            externalId: "reddit:campaign:founders:2026-02-14",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              campaignId: "founders",
+              date: "2026-02-14",
+              SPEND: 500_000_000,
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_hubspot_marketing_pipeline_deal",
+            provider: "HUBSPOT",
+            objectType: "deal",
+            externalId: "hubspot:deal:qualified-paid",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              dealId: "deal_paid_pipeline",
+              dealstage: "qualified",
+              amount: 40_000,
+              originalSource: "paid_search",
+              currency: "USD",
+            },
+          },
+          {
+            id: "raw_gsc_pipeline_traffic",
+            provider: "GOOGLE_SEARCH_CONSOLE",
+            objectType: "search_analytics_row",
+            externalId: "gsc:pipeline:traffic",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              query: "imladris pipeline dashboard",
+              clicks: 250,
+              impressions: 5_000,
+            },
+          },
+          {
+            id: "raw_unify_identified_pipeline_visitor",
+            provider: "UNIFY",
+            objectType: "visitor",
+            externalId: "visitor:acme",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              identified: true,
+              companyDomain: "acme.example",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining([
+              "GOOGLE_ANALYTICS",
+              "GOOGLE_ADS",
+              "META_ADS",
+              "META_PAGE",
+              "REDDIT",
+              "SEMRUSH",
+              "UNIFY",
+            ]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.pipelineEfficiency).toBe(20);
+    expect(result.summary.acquisitionSpend).toBe(2_000);
+    expect(result.metrics.find((entry) => entry.key === "marketing.pipeline_efficiency")).toMatchObject({
+      status: "partial",
+      value: {
+        ratio: 20,
+        qualifiedPipeline: 40_000,
+        acquisitionSpend: 2_000,
+        websiteSessions: 250,
+        webflowFormSubmissions: 0,
+        hubspotLeadConversions: 0,
+        organicTraffic: 0,
+        searchClicks: 250,
+        searchImpressions: 5_000,
+        identifiedVisitors: 1,
+        currency: "USD",
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "google_ads",
+          sourceType: "raw",
+          rawRecordId: "raw_google_ads_pipeline_spend",
+        }),
+        expect.objectContaining({
+          sourceKey: "meta_ads",
+          sourceType: "raw",
+          rawRecordId: "raw_meta_ads_pipeline_spend",
+        }),
+        expect.objectContaining({
+          sourceKey: "reddit",
+          sourceType: "raw",
+          rawRecordId: "raw_reddit_pipeline_spend",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_marketing_pipeline_deal",
+        }),
+        expect.objectContaining({
+          sourceKey: "google_search_console",
+          sourceType: "raw",
+          rawRecordId: "raw_gsc_pipeline_traffic",
+        }),
+        expect.objectContaining({
+          sourceKey: "unify",
+          sourceType: "raw",
+          rawRecordId: "raw_unify_identified_pipeline_visitor",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived product activation when canonical activation is missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_hubspot_activation_account_ada",
+            provider: "HUBSPOT",
+            objectType: "company",
+            externalId: "hubspot:company:ada",
+            occurredAt: new Date("2026-02-10T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-10T00:00:00.000Z"),
+            payload: {
+              hs_object_id: "acct_ada",
+              name: "Ada Labs",
+            },
+          },
+          {
+            id: "raw_hubspot_activation_account_grace",
+            provider: "HUBSPOT",
+            objectType: "account",
+            externalId: "hubspot:company:grace",
+            occurredAt: new Date("2026-02-11T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-11T00:00:00.000Z"),
+            payload: {
+              accountId: "acct_grace",
+              name: "Grace Systems",
+            },
+          },
+          {
+            id: "raw_posthog_activation_ada",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:event:activation-ada",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              event: "activation_completed",
+              hubspotCompanyId: "acct_ada",
+              timestamp: "2026-02-15T00:00:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_future_activation_grace",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:event:activation-grace-future",
+            occurredAt: new Date("2026-02-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-20T00:00:00.000Z"),
+            payload: {
+              event: "activated",
+              accountId: "acct_grace",
+              timestamp: "2026-03-01T00:00:00.000Z",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining(["HUBSPOT", "POSTHOG"]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.activationRate).toBe(50);
+    expect(result.summary.activatedAccounts).toBe(1);
+    expect(result.summary.eligibleAccounts).toBe(2);
+    expect(result.metrics.find((entry) => entry.key === "product.activation_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 50,
+        activatedAccounts: 1,
+        eligibleAccounts: 2,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_activation_account_ada",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_activation_account_grace",
+        }),
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          rawRecordId: "raw_posthog_activation_ada",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived customer success metrics from support records when canonical metrics are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_pylon_high_priority_issue",
+            provider: "PYLON",
+            objectType: "issue",
+            externalId: "pylon:issue:urgent",
+            occurredAt: new Date("2026-02-12T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T10:00:00.000Z"),
+            payload: {
+              issueId: "urgent",
+              accountId: "acct_alpha",
+              status: "open",
+              priority: "high",
+            },
+          },
+          {
+            id: "raw_hubspot_open_ticket",
+            provider: "HUBSPOT",
+            objectType: "ticket",
+            externalId: "hubspot:ticket:open",
+            occurredAt: new Date("2026-02-13T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-13T10:00:00.000Z"),
+            payload: {
+              ticketId: "open",
+              companyId: "company_beta",
+              hs_ticket_priority: "LOW",
+              hs_pipeline_stage: "waiting_on_us",
+            },
+          },
+          {
+            id: "raw_pylon_closed_issue",
+            provider: "PYLON",
+            objectType: "conversation",
+            externalId: "pylon:conversation:closed",
+            occurredAt: new Date("2026-02-14T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T10:00:00.000Z"),
+            payload: {
+              conversationId: "closed",
+              accountId: "acct_gamma",
+              status: "closed",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining(["PYLON"]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.customerHealth).toBe(58);
+    expect(result.summary.atRiskAccounts).toBe(2);
+    expect(result.summary.openSupportIssues).toBe(2);
+    expect(result.summary.customerActivity).toBe(3);
+    expect(result.summary.supportInteractions).toBe(3);
+    expect(result.summary.retentionRiskScore).toBe(42);
+    expect(result.summary.retentionRiskAccounts).toBe(2);
+    expect(result.metrics.find((entry) => entry.key === "customer_success.customer_health")).toMatchObject({
+      status: "partial",
+      value: {
+        score: 58,
+        riskScore: 42,
+        atRiskAccounts: 2,
+        openSupportIssues: 2,
+        escalations: 1,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "pylon",
+          sourceType: "raw",
+          rawRecordId: "raw_pylon_high_priority_issue",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_open_ticket",
+        }),
+      ]),
+    });
+    expect(result.metrics.find((entry) => entry.key === "customer_success.customer_activity")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 3,
+        supportInteractions: 3,
+        productUsageRecords: 0,
+        collaborationSignals: 0,
+        source: "raw_source_records",
+      },
+    });
+    expect(result.metrics.find((entry) => entry.key === "customer_success.retention_risk")).toMatchObject({
+      status: "partial",
+      value: {
+        score: 42,
+        atRiskAccounts: 2,
+        openSupportIssues: 2,
+        escalations: 1,
+        source: "raw_source_records",
+      },
+    });
+  });
+
+  it("surfaces raw-derived churn and retention rates from lifecycle records when canonical metrics are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_active_retained_customer",
+            provider: "STRIPE",
+            objectType: "subscription",
+            externalId: "sub_retained",
+            occurredAt: new Date("2026-02-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T00:00:00.000Z"),
+            payload: {
+              accountId: "acct_retained",
+              status: "active",
+            },
+          },
+          {
+            id: "raw_hubspot_lifecycle_churned_customer",
+            provider: "HUBSPOT",
+            objectType: "company",
+            externalId: "company_churned",
+            occurredAt: new Date("2026-02-20T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-20T00:00:00.000Z"),
+            payload: {
+              companyId: "acct_churned",
+              lifecycleStage: "Churned Customer",
+              churnedAt: "2026-02-20T00:00:00.000Z",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.churnRate).toBe(50);
+    expect(result.summary.retentionRate).toBe(50);
+    expect(result.metrics.find((entry) => entry.key === "customer_success.churn_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 50,
+        churnedCustomers: 1,
+        retainedCustomers: 1,
+        customerBase: 2,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "stripe",
+          sourceType: "raw",
+          rawRecordId: "raw_stripe_active_retained_customer",
+        }),
+        expect.objectContaining({
+          sourceKey: "hubspot",
+          sourceType: "raw",
+          rawRecordId: "raw_hubspot_lifecycle_churned_customer",
+        }),
+      ]),
+    });
+    expect(result.metrics.find((entry) => entry.key === "customer_success.retention_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 50,
+        retainedCustomers: 1,
+        churnedCustomers: 1,
+        customerBase: 2,
+        source: "raw_source_records",
+      },
+    });
+  });
+
+  it("surfaces raw-derived Webflow demo requests when canonical sales demos are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_webflow_demo_request",
+            provider: "WEBFLOW",
+            objectType: "form_submission",
+            externalId: "webflow:submission:demo-request",
+            occurredAt: new Date("2026-02-14T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T10:00:00.000Z"),
+            payload: {
+              submissionId: "demo-request",
+              formName: "Request a Demo",
+              email: "founder@example.com",
+            },
+          },
+          {
+            id: "raw_webflow_contact_form",
+            provider: "WEBFLOW",
+            objectType: "form_submission",
+            externalId: "webflow:submission:contact",
+            occurredAt: new Date("2026-02-14T11:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T11:00:00.000Z"),
+            payload: {
+              submissionId: "contact",
+              formName: "Contact Us",
+              email: "ops@example.com",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining(["WEBFLOW"]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.demos).toBe(1);
+    expect(result.summary.requestedDemos).toBe(1);
+    expect(result.summary.webflowDemoRequests).toBe(1);
+    expect(result.weekly).toEqual([
+      {
+        week: "2026-02-09",
+        demos: 1,
+        customers: 0,
+        revenue: 0,
+      },
+    ]);
+    expect(result.metrics.find((entry) => entry.key === "sales.demos")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 1,
+        requestedDemos: 1,
+        webflowDemoRequests: 1,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "webflow",
+          sourceType: "raw",
+          sourceId: "webflow:submission:demo-request",
+          rawRecordId: "raw_webflow_demo_request",
+        }),
+      ],
+    });
+  });
+
+  it("derives investor active subscription breakdowns from raw Stripe and HubSpot evidence", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_stripe_subscription_breakdown",
+            provider: "STRIPE",
+            objectType: "subscription",
+            externalId: "sub_breakdown_stripe",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-10T00:00:00.000Z"),
+            payload: {
+              status: "active",
+              customerId: "cus_breakdown_shared",
+              customerEmail: "billing@example.com",
+            },
+          },
+          {
+            id: "raw_hubspot_subscription_breakdown_linked",
+            provider: "HUBSPOT",
+            objectType: "subscription_deal",
+            externalId: "deal_breakdown_linked",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-11T00:00:00.000Z"),
+            payload: {
+              dealstage: "closedwon",
+              recurring_revenue: true,
+              stripeCustomerId: "cus_breakdown_shared",
+              email: "billing@example.com",
+            },
+          },
+          {
+            id: "raw_hubspot_subscription_breakdown_only",
+            provider: "HUBSPOT",
+            objectType: "subscription_deal",
+            externalId: "deal_breakdown_hubspot_only",
+            occurredAt: null,
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T00:00:00.000Z"),
+            payload: {
+              dealstage: "closedwon",
+              recurring_revenue: true,
+              contactEmail: "customer@example.net",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.activeSubscriptions).toBe(2);
+    expect(result.summary.stripeSubscriptions).toBe(1);
+    expect(result.summary.hubspotOnlySubscriptions).toBe(1);
+    expect(result.metrics.find((entry) => entry.key === "revenue.active_subscriptions")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 2,
+        stripeSubscriptions: 1,
+        hubspotOnlySubscriptions: 1,
+        source: "raw_source_records",
+      },
+    });
   });
 
   it("parses accounting-formatted canonical numbers before building investor summaries", async () => {

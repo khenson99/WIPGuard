@@ -2123,8 +2123,9 @@ interface StripeSubItem {
 interface StripeSub extends Record<string, unknown> {
   id: string;
   items: { data: StripeSubItem[] };
-  customer: string | { id?: string | null; email?: string | null } | null;
+  customer: string | { id?: string | null; email?: string | null; metadata?: Record<string, unknown> | null } | null;
   canceled_at: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface StripeCharge extends Record<string, unknown> {
@@ -2139,12 +2140,26 @@ type StripeInvoice = Record<string, unknown> & {
   created?: number | string | null;
 };
 
+type StripeInvoiceLine = Record<string, unknown> & {
+  id?: string;
+};
+
 type StripeDispute = Record<string, unknown> & {
   id?: string;
   created?: number | string | null;
 };
 
 type StripeRefund = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripePaymentIntent = Record<string, unknown> & {
+  id?: string;
+  created?: number | string | null;
+};
+
+type StripeBalanceTransaction = Record<string, unknown> & {
   id?: string;
   created?: number | string | null;
 };
@@ -2202,6 +2217,55 @@ function stripeSubscriptionCustomerEmail(customer: StripeSub["customer"]): strin
   }
 
   return null;
+}
+
+function normalizeStripeMetadataId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value).trim().toLowerCase();
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function stripeMetadataIdValues(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(stripeMetadataIdValues);
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => normalizeStripeMetadataId(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  const normalized = normalizeStripeMetadataId(value);
+  return normalized ? [normalized] : [];
+}
+
+function stripeSubscriptionHubspotCompanyIds(subscription: StripeSub): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const addId = (value: unknown) => {
+    for (const id of stripeMetadataIdValues(value)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  };
+  const metadataSources = [
+    subscription.metadata,
+    typeof subscription.customer === "object" && subscription.customer ? subscription.customer.metadata : null,
+  ];
+
+  for (const metadata of metadataSources) {
+    if (!metadata || typeof metadata !== "object") continue;
+    addId(metadata.hubspot_company_id);
+    addId(metadata.hubspotCompanyId);
+    addId(metadata.hubspot_company_ids);
+    addId(metadata.hubspotCompanyIds);
+    addId(metadata.hubspot_associated_company_id);
+    addId(metadata.hubspotAssociatedCompanyId);
+    addId(metadata.hubspot_associated_company_ids);
+    addId(metadata.hubspotAssociatedCompanyIds);
+  }
+
+  return ids;
 }
 
 function normalizeEmailDomain(email: string | null): string | null {
@@ -2398,6 +2462,92 @@ export async function fetchStripeData(
     return { charges: allCharges, pagesFetched, truncated };
   };
 
+  const fetchAdditionalInvoiceLines = async (invoice: StripeInvoice): Promise<{
+    invoice: StripeInvoice;
+    truncated: boolean;
+  }> => {
+    const invoiceId = typeof invoice.id === "string" && invoice.id.trim() ? invoice.id.trim() : null;
+    const lines = invoice.lines && typeof invoice.lines === "object" && !Array.isArray(invoice.lines)
+      ? invoice.lines as Record<string, unknown>
+      : null;
+    const firstPageLines = Array.isArray(lines?.data) ? lines.data as StripeInvoiceLine[] : [];
+    if (!invoiceId || lines?.has_more !== true) {
+      return { invoice, truncated: false };
+    }
+
+    const allLines = [...firstPageLines];
+    let startingAfter = firstPageLines[firstPageLines.length - 1]?.id;
+
+    for (let page = 0; page < maxPages; page++) {
+      if (!startingAfter) break;
+
+      const url = new URL(`${baseUrl}/invoices/${encodeURIComponent(invoiceId)}/lines`);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("starting_after", startingAfter);
+      url.searchParams.append("expand[]", "data.price.product");
+
+      const response = await fetchStripe(url.toString());
+      if (!response.ok) {
+        return {
+          invoice: {
+            ...invoice,
+            _imladrisInvoiceLineItemsError: `Stripe invoice lines error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          },
+          truncated: false,
+        };
+      }
+
+      const payload = await safeJson<{ data?: StripeInvoiceLine[]; has_more?: boolean }>(
+        response,
+        "stripe invoice lines",
+      );
+      const batch = payload.data ?? [];
+      allLines.push(...batch);
+
+      if (!payload.has_more || batch.length === 0) {
+        return {
+          invoice: {
+            ...invoice,
+            lines: {
+              ...(lines ?? {}),
+              data: allLines,
+              has_more: false,
+            },
+          },
+          truncated: false,
+        };
+      }
+
+      startingAfter = batch[batch.length - 1]?.id;
+      if (!startingAfter) break;
+      if (page === maxPages - 1) {
+        return {
+          invoice: {
+            ...invoice,
+            lines: {
+              ...(lines ?? {}),
+              data: allLines,
+              has_more: true,
+            },
+          },
+          truncated: true,
+        };
+      }
+    }
+
+    return {
+      invoice: {
+        ...invoice,
+        lines: {
+          ...(lines ?? {}),
+          data: allLines,
+          has_more: Boolean(startingAfter),
+        },
+      },
+      truncated: Boolean(startingAfter),
+    };
+  };
+
   const fetchInvoices = async (createdGte: number, createdLte: number): Promise<{
     invoices: StripeInvoice[];
     pagesFetched: number;
@@ -2435,8 +2585,14 @@ export async function fetchStripeData(
           "stripe invoices",
         );
         const batch = payload.data ?? [];
-        invoices.push(...batch);
         pagesFetched += 1;
+        for (const invoice of batch) {
+          const lineResult = await fetchAdditionalInvoiceLines(invoice);
+          invoices.push(lineResult.invoice);
+          if (lineResult.truncated) {
+            return { invoices, pagesFetched, truncated: true, available: true, error: null };
+          }
+        }
 
         if (!payload.has_more || batch.length === 0) {
           return { invoices, pagesFetched, truncated: false, available: true, error: null };
@@ -2589,6 +2745,133 @@ export async function fetchStripeData(
     return { refunds, pagesFetched, truncated: false, available: true, error: null };
   };
 
+  const fetchPaymentIntents = async (createdGte: number, createdLte: number): Promise<{
+    paymentIntents: StripePaymentIntent[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const paymentIntents: StripePaymentIntent[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/payment_intents`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.customer");
+        url.searchParams.append("expand[]", "data.latest_charge");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            paymentIntents,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe payment intents error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripePaymentIntent[]; has_more?: boolean }>(
+          response,
+          "stripe payment intents",
+        );
+        const batch = payload.data ?? [];
+        paymentIntents.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { paymentIntents, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        paymentIntents,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe payment intents request failed",
+      };
+    }
+
+    return { paymentIntents, pagesFetched, truncated: false, available: true, error: null };
+  };
+
+  const fetchBalanceTransactions = async (createdGte: number, createdLte: number): Promise<{
+    balanceTransactions: StripeBalanceTransaction[];
+    pagesFetched: number;
+    truncated: boolean;
+    available: boolean;
+    error: string | null;
+  }> => {
+    const balanceTransactions: StripeBalanceTransaction[] = [];
+    let startingAfter: string | undefined;
+    let pagesFetched = 0;
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const url = new URL(`${baseUrl}/balance_transactions`);
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("created[gte]", String(createdGte));
+        url.searchParams.set("created[lte]", String(createdLte));
+        url.searchParams.append("expand[]", "data.source");
+        if (startingAfter) url.searchParams.set("starting_after", startingAfter);
+
+        const response = await fetchStripe(url.toString());
+        if (!response.ok) {
+          return {
+            balanceTransactions,
+            pagesFetched,
+            truncated: false,
+            available: false,
+            error: `Stripe balance transactions error (${response.status}): ${await readStripeErrorMessage(response)}`,
+          };
+        }
+
+        const payload = await safeJson<{ data?: StripeBalanceTransaction[]; has_more?: boolean }>(
+          response,
+          "stripe balance transactions",
+        );
+        const batch = payload.data ?? [];
+        balanceTransactions.push(...batch);
+        pagesFetched += 1;
+
+        if (!payload.has_more || batch.length === 0) {
+          return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+        }
+        startingAfter = batch[batch.length - 1]?.id;
+        if (!startingAfter) {
+          return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+        }
+        if (page === maxPages - 1) {
+          return { balanceTransactions, pagesFetched, truncated: true, available: true, error: null };
+        }
+      }
+    } catch (error) {
+      return {
+        balanceTransactions,
+        pagesFetched,
+        truncated: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Stripe balance transactions request failed",
+      };
+    }
+
+    return { balanceTransactions, pagesFetched, truncated: false, available: true, error: null };
+  };
+
   const [
     activeSubResult,
     canceledSubResult,
@@ -2598,6 +2881,8 @@ export async function fetchStripeData(
     invoicesResult,
     disputesResult,
     refundsResult,
+    paymentIntentsResult,
+    balanceTransactionsResult,
   ] = await Promise.all([
     fetchSubscriptionsByStatus("active"),
     fetchSubscriptionsByStatus("canceled"),
@@ -2607,6 +2892,8 @@ export async function fetchStripeData(
     fetchInvoices(rangeStart, rangeEnd),
     fetchDisputes(rangeStart, rangeEnd),
     fetchRefunds(rangeStart, rangeEnd),
+    fetchPaymentIntents(rangeStart, rangeEnd),
+    fetchBalanceTransactions(rangeStart, rangeEnd),
   ]);
   const activeSubs = activeSubResult.subscriptions;
   const canceledSubs = canceledSubResult.subscriptions;
@@ -2701,6 +2988,8 @@ export async function fetchStripeData(
     ...(invoicesResult.truncated ? ["invoices"] : []),
     ...(disputesResult.truncated ? ["disputes"] : []),
     ...(refundsResult.truncated ? ["refunds"] : []),
+    ...(paymentIntentsResult.truncated ? ["paymentIntents"] : []),
+    ...(balanceTransactionsResult.truncated ? ["balanceTransactions"] : []),
   ];
   const meta = makeMeta();
   meta.truncated = truncatedResources.length > 0;
@@ -2716,6 +3005,8 @@ export async function fetchStripeData(
       invoices: invoicesResult.pagesFetched,
       disputes: disputesResult.pagesFetched,
       refunds: refundsResult.pagesFetched,
+      paymentIntents: paymentIntentsResult.pagesFetched,
+      balanceTransactions: balanceTransactionsResult.pagesFetched,
     },
     invoicesFetched: invoicesResult.invoices.length,
     invoicesAvailable: invoicesResult.available,
@@ -2726,6 +3017,12 @@ export async function fetchStripeData(
     refundsFetched: refundsResult.refunds.length,
     refundsAvailable: refundsResult.available,
     refundsError: refundsResult.error,
+    paymentIntentsFetched: paymentIntentsResult.paymentIntents.length,
+    paymentIntentsAvailable: paymentIntentsResult.available,
+    paymentIntentsError: paymentIntentsResult.error,
+    balanceTransactionsFetched: balanceTransactionsResult.balanceTransactions.length,
+    balanceTransactionsAvailable: balanceTransactionsResult.available,
+    balanceTransactionsError: balanceTransactionsResult.error,
   };
 
   return {
@@ -2748,10 +3045,12 @@ export async function fetchStripeData(
       activeCustomerRefs: activeSubs.map((subscription) => {
         const customerId = stripeSubscriptionCustomerId(subscription.customer);
         const email = stripeSubscriptionCustomerEmail(subscription.customer);
+        const hubspotCompanyIds = stripeSubscriptionHubspotCompanyIds(subscription);
         return {
           customerId,
           email,
           emailDomain: normalizeEmailDomain(email),
+          ...(hubspotCompanyIds.length > 0 ? { hubspotCompanyIds } : {}),
         };
       }),
     },
@@ -2773,6 +3072,8 @@ export async function fetchStripeData(
       invoices: invoicesResult.invoices,
       disputes: disputesResult.disputes,
       refunds: refundsResult.refunds,
+      paymentIntents: paymentIntentsResult.paymentIntents,
+      balanceTransactions: balanceTransactionsResult.balanceTransactions,
     },
     _meta: meta,
   };

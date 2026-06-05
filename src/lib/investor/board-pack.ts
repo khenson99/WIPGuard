@@ -11,6 +11,8 @@ export interface InvestorBoardMetric {
   asOf: string | null;
   warnings: string[];
   sourceLineageKeys?: string[];
+  sourceLineageCount?: number;
+  latestSourceCapturedAt?: string;
 }
 
 export interface InvestorHealthyArrGrowthDriver {
@@ -125,9 +127,43 @@ function asMetricSourceLineageKeys(metric: Record<string, unknown>): string[] {
   return keys;
 }
 
-function metricSourceLineageField(metric: Record<string, unknown>): Pick<InvestorBoardMetric, "sourceLineageKeys"> {
+function asIsoTimestamp(value: unknown): string | null {
+  const raw = asString(value);
+  if (!raw) return null;
+  const timestamp = new Date(raw);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+}
+
+function latestMetricLineageCapturedAt(metric: Record<string, unknown>): string | null {
+  const timestamps: string[] = [];
+  const existingLatest = asIsoTimestamp(metric.latestSourceCapturedAt);
+  if (existingLatest) timestamps.push(existingLatest);
+
+  if (Array.isArray(metric.sourceLineage)) {
+    for (const lineage of metric.sourceLineage) {
+      const capturedAt = asIsoTimestamp(asRecord(lineage).capturedAt);
+      if (capturedAt) timestamps.push(capturedAt);
+    }
+  }
+
+  return timestamps.sort().at(-1) ?? null;
+}
+
+function metricSourceLineageField(
+  metric: Record<string, unknown>,
+): Pick<InvestorBoardMetric, "sourceLineageKeys" | "sourceLineageCount" | "latestSourceCapturedAt"> {
   const sourceLineageKeys = asMetricSourceLineageKeys(metric);
-  return sourceLineageKeys.length > 0 ? { sourceLineageKeys } : {};
+  const sourceLineageCount =
+    Array.isArray(metric.sourceLineage) && metric.sourceLineage.length > 0
+      ? metric.sourceLineage.length
+      : asNumber(metric.sourceLineageCount);
+  const latestSourceCapturedAt = latestMetricLineageCapturedAt(metric);
+
+  return {
+    ...(sourceLineageKeys.length > 0 ? { sourceLineageKeys } : {}),
+    ...(sourceLineageCount !== null && sourceLineageCount > 0 ? { sourceLineageCount } : {}),
+    ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
+  };
 }
 
 function extractInvestorMetrics(slideJson: unknown): InvestorBoardMetric[] {

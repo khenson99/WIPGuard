@@ -2877,6 +2877,7 @@ function hubspotRecurringRevenueAsOf(
       "billing_start_date",
       "billingStartsAt",
       "billing_starts_at",
+      "hs_recurring_billing_start_date",
       "serviceStartDate",
       "service_start_date",
       "contractStartDate",
@@ -2898,6 +2899,7 @@ function hubspotRecurringRevenueAsOf(
       "billing_end_date",
       "billingEndsAt",
       "billing_ends_at",
+      "hs_recurring_billing_end_date",
       "serviceEndDate",
       "service_end_date",
       "contractEndDate",
@@ -2926,6 +2928,7 @@ function hubspotRecurringRevenueAsOf(
     firstValueFromSources(sources, [
       "monthlyRecurringRevenue",
       "monthly_recurring_revenue",
+      "hs_mrr",
       "mrr",
       "amountMonthly",
       "amount_monthly",
@@ -2941,6 +2944,7 @@ function hubspotRecurringRevenueAsOf(
       "recurring_revenue_amount",
       "annualRecurringRevenue",
       "annual_recurring_revenue",
+      "hs_arr",
       "arr",
     ]),
   );
@@ -3007,6 +3011,7 @@ function computeMrrBreakdown(records: RawSourceRecordRow[], asOf: Date) {
           stripeCustomerId(record) ??
           stripeCustomerEmail(record) ??
           stripeCustomerEmailDomain(record) ??
+          stripeHubspotCompanyIdentity(record) ??
           stripeSubscriptionId(record),
       )
       .filter((value): value is string => Boolean(value)),
@@ -3169,6 +3174,36 @@ function stripeInvoiceLineItems(payload: Record<string, unknown>): Record<string
 
 function stripeInvoiceLineAmount(item: Record<string, unknown>): number {
   const sources = wrapperSources(item);
+  const explicitDecimalAmount = numberFrom(
+    firstValueFromSources(sources, [
+      "amountDecimal",
+      "amount_decimal",
+      "amountDollars",
+      "amount_dollars",
+      "subtotalDecimal",
+      "subtotal_decimal",
+      "subtotalDollars",
+      "subtotal_dollars",
+      "totalDecimal",
+      "total_decimal",
+      "totalDollars",
+      "total_dollars",
+    ]),
+  );
+  if (explicitDecimalAmount !== null) return Math.max(0, explicitDecimalAmount);
+
+  const explicitAmountCents = numberFrom(
+    firstValueFromSources(sources, [
+      "amountCents",
+      "amount_cents",
+      "subtotalCents",
+      "subtotal_cents",
+      "totalCents",
+      "total_cents",
+    ]),
+  );
+  if (explicitAmountCents !== null) return Math.max(0, explicitAmountCents / 100);
+
   const amountCents = numberFrom(
     firstValueFromSources(sources, [
       "amount",
@@ -3201,16 +3236,30 @@ function stripePaymentIntentId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
   const paymentIntentSources = sources.map((source) => nestedRecordFromKey(source, "payment_intent"));
-  return normalizeLookup(
-    firstValueFromSources([...sources, ...paymentIntentSources], [
+  const explicitId = normalizeLookup(
+    firstValueFromSources(sources, [
       "paymentIntentId",
       "payment_intent_id",
       "stripePaymentIntentId",
       "stripe_payment_intent_id",
+    ]),
+  );
+  if (explicitId) return explicitId;
+
+  const paymentIntentReference = normalizeLookup(
+    firstValueFromSources(sources, [
       "paymentIntent",
       "payment_intent",
     ]),
   );
+  if (paymentIntentReference) return paymentIntentReference;
+
+  const nestedPaymentIntentId = normalizeLookup(firstValueFromSources(paymentIntentSources, ["id"]));
+  if (nestedPaymentIntentId) return nestedPaymentIntentId;
+
+  return recordIsObjectType(record, "payment_intent")
+    ? normalizeLookup(firstValueFromSources(sources, ["id"]))
+    : null;
 }
 
 function stripeChargeId(record: RawSourceRecordRow): string | null {
@@ -3384,6 +3433,59 @@ function stripeRefundLossAmount(record: RawSourceRecordRow): number | null {
   return Math.abs(amountCents) / 100;
 }
 
+function stripeBalanceTransactionFeeAmount(record: RawSourceRecordRow): number {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "balance_transaction")) {
+    return 0;
+  }
+  const feeCents = numberFrom(
+    firstValueFromSources(wrapperSources(asRecord(record.payload)), [
+      "fee",
+      "feeAmount",
+      "fee_amount",
+      "feeCents",
+      "fee_cents",
+      "stripeFee",
+      "stripe_fee",
+    ]),
+  );
+  return feeCents && feeCents > 0 ? feeCents / 100 : 0;
+}
+
+function stripeBalanceTransactionSourceId(record: RawSourceRecordRow): string | null {
+  if (!recordIsProvider(record, IntegrationProvider.STRIPE) || !recordIsObjectType(record, "balance_transaction")) {
+    return null;
+  }
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  return (
+    normalizeIdentifier(
+      firstValueFromSources(sources, [
+        "id",
+        "balanceTransactionId",
+        "balance_transaction_id",
+        "transactionId",
+        "transaction_id",
+      ]),
+    ) ?? normalizeIdentifier(record.externalId)
+  );
+}
+
+function computeStripeProcessingFees(records: RawSourceRecordRow[]): number {
+  const feesByTransaction = new Map<string, number>();
+  let unkeyedFees = 0;
+  for (const record of records) {
+    const amount = stripeBalanceTransactionFeeAmount(record);
+    if (amount <= 0) continue;
+    const transactionId = stripeBalanceTransactionSourceId(record);
+    if (!transactionId) {
+      unkeyedFees += amount;
+      continue;
+    }
+    feesByTransaction.set(transactionId, Math.max(feesByTransaction.get(transactionId) ?? 0, amount));
+  }
+  return [...feesByTransaction.values()].reduce((sum, amount) => sum + amount, unkeyedFees);
+}
+
 function stripeRefundChargeId(record: RawSourceRecordRow): string | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
@@ -3541,6 +3643,11 @@ function stripeInvoiceLineIsOneTimeService(item: Record<string, unknown>): boole
     ...wrapperSources(nestedRecordFromKey(source, "pricing")),
     ...wrapperSources(nestedRecordFromKey(source, "plan")),
   ]);
+  const productSources = priceSources.flatMap((source) => [
+    ...wrapperSources(nestedRecordFromKey(source, "product")),
+    ...wrapperSources(nestedRecordFromKey(source, "product_details")),
+    ...wrapperSources(nestedRecordFromKey(source, "productDetails")),
+  ]);
   const typeSignals = valuesFromSources([...sources, ...parentSources, ...priceSources], [
     "type",
     "billingScheme",
@@ -3550,7 +3657,7 @@ function stripeInvoiceLineIsOneTimeService(item: Record<string, unknown>): boole
     return true;
   }
 
-  const serviceSignals = valuesFromSources([...sources, ...priceSources], [
+  const serviceSignals = valuesFromSources([...sources, ...priceSources, ...productSources], [
     "description",
     "name",
     "nickname",
@@ -3610,12 +3717,14 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
     const amount = transactionAmount(record);
     return amount && amount < 0 ? sum + Math.abs(amount) : sum;
   }, 0);
-  const costOfGoodsSold = mercuryTransactions.reduce((sum, record) => {
+  const mercuryCostOfGoodsSold = mercuryTransactions.reduce((sum, record) => {
     const amount = transactionAmount(record);
     return amount && amount < 0 && mercuryTransactionIsCostOfGoodsSold(record)
       ? sum + Math.abs(amount)
       : sum;
   }, 0);
+  const stripeProcessingFees = computeStripeProcessingFees(records);
+  const costOfGoodsSold = mercuryCostOfGoodsSold + stripeProcessingFees;
   const expenseTransactions = mercuryTransactions.filter((record) => {
     const amount = transactionAmount(record);
     return Boolean(amount && amount < 0);
@@ -3703,6 +3812,7 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
           : null,
       revenue: roundMoney(grossMarginRevenue),
       costOfGoodsSold: roundMoney(costOfGoodsSold),
+      stripeProcessingFees: roundMoney(stripeProcessingFees),
       currency,
     },
     mrr: {
@@ -5559,8 +5669,9 @@ function computeMarketingPipelineEfficiency(
 }
 
 function marketingWebsiteTrafficValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
+  const count = value.websiteSessions + value.organicTraffic;
   return {
-    count: value.websiteSessions + value.organicTraffic,
+    count: count > 0 ? count : value.searchClicks,
     websiteSessions: value.websiteSessions,
     organicTraffic: value.organicTraffic,
     searchClicks: value.searchClicks,
@@ -5570,13 +5681,19 @@ function marketingWebsiteTrafficValue(value: ReturnType<typeof computeMarketingP
 
 function marketingConversionRateValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
   const conversions = value.webflowFormSubmissions + value.hubspotLeadConversions;
+  const websiteSessions =
+    value.websiteSessions > 0
+      ? value.websiteSessions
+      : value.organicTraffic > 0
+        ? value.organicTraffic
+        : value.searchClicks;
   return {
     rate:
-      value.websiteSessions > 0
-        ? roundRatio((conversions / value.websiteSessions) * 100)
+      websiteSessions > 0
+        ? roundRatio((conversions / websiteSessions) * 100)
         : null,
     conversions,
-    websiteSessions: value.websiteSessions,
+    websiteSessions,
     webflowFormSubmissions: value.webflowFormSubmissions,
     hubspotLeadConversions: value.hubspotLeadConversions,
     identifiedVisitors: value.identifiedVisitors,
@@ -5706,6 +5823,18 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
     nestedRecordFromKey(source, "company"),
     nestedRecordFromKey(source, "customer"),
   ]);
+  const associationSources = sources.flatMap((source) => {
+    const associations = nestedRecordFromKey(source, "associations");
+    return [
+      associations,
+      nestedRecordFromKey(associations, "companies"),
+      nestedRecordFromKey(associations, "company"),
+      nestedRecordFromKey(associations, "accounts"),
+      nestedRecordFromKey(associations, "account"),
+      nestedRecordFromKey(source, "companies"),
+      nestedRecordFromKey(source, "accounts"),
+    ];
+  });
   const id =
     firstValueFromSources(sources, [
       "accountId",
@@ -5733,9 +5862,19 @@ function accountIdFromPayload(record: RawSourceRecordRow): string | null {
       "id",
       "stripeCustomerId",
       "stripe_customer_id",
+    ]) ??
+    firstValueFromSources(associationSources, [
+      "companies",
+      "company",
+      "accounts",
+      "account",
+      "results",
+      "data",
+      "ids",
+      "id",
     ]);
 
-  return normalizeFirstLookup(id);
+  return normalizeFirstLookup(id) ?? normalizeFirstAssociationLookup(id);
 }
 
 function statusText(value: unknown, seen = new WeakSet<object>()): string | null {
@@ -5961,7 +6100,13 @@ function isEscalation(record: RawSourceRecordRow, asOf: Date): boolean {
     normalizeLookup(firstValueFromSources(sources, ["type", "kind", "category"])) ?? "";
   const rawTags = firstValueFromSources(sources, ["tags"]);
   const tags = normalizedTagValues(rawTags);
-  const priority = normalizeLookup(firstValueFromSources(sources, ["priority"])) ?? "";
+  const priority =
+    normalizeLookup(firstValueFromSources(sources, [
+      "priority",
+      "ticketPriority",
+      "ticket_priority",
+      "hs_ticket_priority",
+    ])) ?? "";
 
   if (recordIsProvider(record, IntegrationProvider.SLACK)) {
     const escalationFlag = [

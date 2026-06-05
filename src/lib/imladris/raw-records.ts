@@ -674,6 +674,9 @@ function providerSpecificExternalIdValue(input: {
   if (input.snapshotKey === "stripe" && input.objectType === "refund") {
     return stripeRefundExternalIdValue(input.record);
   }
+  if (input.snapshotKey === "stripe" && input.objectType === "balance_transaction") {
+    return stripeBalanceTransactionExternalIdValue(input.record);
+  }
   if (input.snapshotKey === "semrush" && input.objectType === "organic_competitor") {
     return semrushCompetitorExternalIdValue(input.record);
   }
@@ -887,6 +890,24 @@ function stripeDisputeExternalIdValue(record: Record<string, unknown>): string |
 function stripeRefundExternalIdValue(record: Record<string, unknown>): string | number | null {
   for (const sourceRecord of providerFieldRecords(record)) {
     for (const key of ["refundId", "refund_id", "refund", "id"]) {
+      const value = providerExternalIdValue(sourceRecord, key);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function stripeBalanceTransactionExternalIdValue(record: Record<string, unknown>): string | number | null {
+  for (const sourceRecord of providerFieldRecords(record)) {
+    for (const key of [
+      "balanceTransactionId",
+      "balance_transaction_id",
+      "balanceTransaction",
+      "balance_transaction",
+      "transactionId",
+      "transaction_id",
+      "id",
+    ]) {
       const value = providerExternalIdValue(sourceRecord, key);
       if (value !== null) return value;
     }

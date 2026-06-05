@@ -2049,6 +2049,56 @@ describe("Imladris raw record builder", () => {
     expect(refunds).toHaveLength(2);
   });
 
+  it("uses Stripe balance transaction ID aliases for stable raw record external IDs", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.STRIPE,
+      snapshotKey: "stripe",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        balanceTransactions: [
+          {
+            balanceTransactionId: "txn_1",
+            source: "ch_1",
+            amount: 12_000,
+            fee: 700,
+            net: 11_300,
+            created: "2026-05-28T12:00:00.000Z",
+          },
+          {
+            balance_transaction_id: "txn_2",
+            source: "re_1",
+            amount: -2_500,
+            fee: 0,
+            net: -2_500,
+            created: "2026-05-29T12:00:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const balanceTransactions = records.filter((record) => record.objectType === "balance_transaction");
+    expect(balanceTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        externalId: "stripe:balance_transaction:txn_1",
+        payload: expect.objectContaining({
+          balanceTransactionId: "txn_1",
+          fee: 700,
+          net: 11_300,
+        }),
+      }),
+      expect.objectContaining({
+        externalId: "stripe:balance_transaction:txn_2",
+        payload: expect.objectContaining({
+          balance_transaction_id: "txn_2",
+          net: -2_500,
+        }),
+      }),
+    ]));
+    expect(balanceTransactions).toHaveLength(2);
+  });
+
   it("uses nested payment and transaction IDs for stable raw record external IDs", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.MERCURY,

@@ -57,6 +57,7 @@ const DATA: CompanyTrackerDashboardData = {
     grossMargin: 78.4,
     grossMarginRevenue: 456_000,
     costOfGoodsSold: 98_500,
+    stripeProcessingFees: 12_000,
     qualifiedPipeline: 1_000_000,
     qualifiedPipelineCount: 7,
     collaborationTouchCount: 5,
@@ -259,6 +260,7 @@ const DATA: CompanyTrackerDashboardData = {
       periodEnd: "2026-05-31T23:59:59.999Z",
       sourceLineageCount: 2,
       sourceLineageKeys: ["stripe", "hubspot"],
+      latestSourceCapturedAt: "2026-06-01T03:15:00.000Z",
     },
   ],
   trust: {
@@ -311,7 +313,7 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("Expenses")).toBeTruthy();
     expect(screen.getByText("Gross Margin")).toBeTruthy();
     expect(screen.getByText("$160.0k out / $70.0k in")).toBeTruthy();
-    expect(screen.getByText("$456.0k revenue / $98.5k COGS")).toBeTruthy();
+    expect(screen.getByText("$456.0k revenue / $98.5k COGS incl. $12.0k Stripe fees")).toBeTruthy();
     expect(screen.getByText("7 deals / 84.0% collaboration")).toBeTruthy();
     expect(screen.getByText("Demos")).toBeTruthy();
     expect(screen.getByText("9 scheduled / 3 requested")).toBeTruthy();
@@ -349,6 +351,7 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("Configure RUNWAY FinancialGoal target.")).toBeTruthy();
     expect(screen.getByText("Data Trust")).toBeTruthy();
     expect(screen.getByText("Sources stripe · hubspot")).toBeTruthy();
+    expect(screen.getAllByText("Evidence 2 source records · latest 2026-06-01").length).toBeGreaterThan(0);
     expect(screen.getByText("finance.cash_runway_months.value.months")).toBeTruthy();
   });
 
