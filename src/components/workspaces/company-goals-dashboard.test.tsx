@@ -113,7 +113,7 @@ describe("CompanyGoalsDashboard", () => {
           },
           emptyState: {
             title: "No Linear goals synced",
-            description: "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
+            description: "Connect Linear in Settings > Integrations, then run Linear Issue Sync to populate company goals.",
           },
         }}
       />,
@@ -121,7 +121,7 @@ describe("CompanyGoalsDashboard", () => {
 
     expect(screen.getByText("No Linear goals synced")).toBeTruthy();
     expect(screen.getByText(/Settings > Integrations/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Open integrations/i }).getAttribute("href")).toBe("/settings");
+    expect(screen.getByRole("link", { name: /Open Integrations/i }).getAttribute("href")).toBe("/settings?tab=integrations");
   });
 
   it("lets users choose which synced Linear projects become tracked goals", async () => {

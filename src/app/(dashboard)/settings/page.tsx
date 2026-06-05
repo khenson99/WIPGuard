@@ -6,9 +6,11 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { clsx } from "clsx";
 import { TeamTab } from "@/components/settings/team-tab";
 import { OperationsTab } from "@/components/settings/operations-tab";
+import { IntegrationsTab } from "@/components/settings/integrations-tab";
 
 const TABS = [
   { id: "team", label: "Team" },
+  { id: "integrations", label: "Integrations" },
   { id: "operations", label: "Operations" },
 ] as const;
 
@@ -36,7 +38,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (
-      tabParam !== "integrations" &&
       tabParam !== "board" &&
       tabParam !== "sprints" &&
       tabParam !== "projects"
@@ -45,13 +46,6 @@ export default function SettingsPage() {
     }
 
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    if (tabParam === "integrations") {
-      params.delete("tab");
-      const suffix = params.toString();
-      router.replace(`/integrations${suffix ? `?${suffix}` : ""}`, { scroll: false });
-      return;
-    }
-
     params.set("tab", "departments");
     const basePath = pathname || "/settings";
     router.replace(`${basePath}?${params.toString()}`, { scroll: false });
@@ -99,7 +93,7 @@ export default function SettingsPage() {
     [activeTab, handleTabChange],
   );
 
-  if (tabParam === "integrations" || isLegacySettingsTab) {
+  if (isLegacySettingsTab) {
     return null;
   }
 
@@ -111,7 +105,7 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="text-xs text-muted-foreground">
-          Configure team access and operating guardrails.
+          Configure team access, integrations, and operating guardrails.
         </p>
       </div>
 
@@ -141,6 +135,7 @@ export default function SettingsPage() {
       {/* Tab content */}
       <div role="tabpanel" id={`tabpanel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="flex-1 overflow-auto px-6 py-5">
         {activeTab === "team" && <TeamTab />}
+        {activeTab === "integrations" && <IntegrationsTab />}
         {activeTab === "operations" && <OperationsTab />}
       </div>
     </div>

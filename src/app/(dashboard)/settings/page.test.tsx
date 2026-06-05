@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "@/app/(dashboard)/settings/page";
 
@@ -19,18 +19,22 @@ vi.mock("@/components/settings/operations-tab", () => ({
   OperationsTab: () => <div>Operations</div>,
 }));
 
+vi.mock("@/components/settings/integrations-tab", () => ({
+  IntegrationsTab: () => <div>Integrations panel</div>,
+}));
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     mockSearchParams = new URLSearchParams();
     replace.mockReset();
   });
 
-  it("renders only analytics-era settings tabs", () => {
+  it("renders settings tabs including integrations", () => {
     const { queryByRole } = render(<SettingsPage />);
 
     expect(queryByRole("tab", { name: "Team" })).toBeTruthy();
+    expect(queryByRole("tab", { name: "Integrations" })).toBeTruthy();
     expect(queryByRole("tab", { name: "Operations" })).toBeTruthy();
-    expect(queryByRole("tab", { name: "Integrations" })).toBeNull();
     expect(queryByRole("tab", { name: "Board & WIP Limits" })).toBeNull();
     expect(queryByRole("tab", { name: "Sprints" })).toBeNull();
     expect(queryByRole("tab", { name: "Projects" })).toBeNull();
@@ -39,17 +43,14 @@ describe("SettingsPage", () => {
     expect(queryByRole("tab", { name: "Design Interview" })).toBeNull();
   });
 
-  it("redirects legacy integrations tab links into the integrations workspace", async () => {
+  it("renders the integrations tab from direct links", () => {
     mockSearchParams = new URLSearchParams("tab=integrations&status=connected&integration=slack");
 
     render(<SettingsPage />);
 
-    await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith(
-        "/integrations?status=connected&integration=slack",
-        { scroll: false },
-      );
-    });
+    expect(screen.getByRole("tab", { name: "Integrations" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Integrations panel")).toBeTruthy();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("redirects legacy task-management tabs to team settings", async () => {

@@ -932,6 +932,75 @@ export async function verifyPylonApiToken(
   throw new Error("Pylon token verification failed");
 }
 
+export async function verifyLinearApiToken(token: string): Promise<AccountProfile> {
+  const normalizedToken = normalizeBearerToken(token);
+  if (!normalizedToken) {
+    throw new Error("Linear API token is empty");
+  }
+
+  const response = await fetch("https://api.linear.app/graphql", {
+    method: "POST",
+    headers: {
+      Authorization: normalizedToken,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      query: `
+        query VerifyLinearToken {
+          viewer {
+            id
+            name
+            email
+          }
+        }
+      `,
+    }),
+    cache: "no-store",
+  });
+
+  const raw = (await response.json().catch(() => null)) as unknown;
+  const payload = asRecord(raw);
+  const graphqlErrors = Array.isArray(payload?.errors) ? payload.errors : [];
+
+  if (!response.ok || graphqlErrors.length > 0) {
+    const firstError = asRecord(graphqlErrors[0] ?? null);
+    const message =
+      getString(firstError ?? {}, "message") ||
+      getString(payload ?? {}, "message") ||
+      getString(payload ?? {}, "error");
+    throw new Error(
+      message
+        ? `Linear token verification failed (${response.status}): ${message}`
+        : `Linear token verification failed (${response.status})`
+    );
+  }
+
+  const data = asRecord(payload?.data);
+  const viewer = asRecord(data?.viewer);
+  if (!viewer) {
+    throw new Error("Linear viewer response was invalid");
+  }
+
+  const providerAccountId = getString(viewer, "id") || getString(viewer, "email");
+  if (!providerAccountId) {
+    throw new Error("Linear profile did not include an account identifier");
+  }
+
+  return {
+    providerAccountId,
+    accountLabel:
+      getString(viewer, "name") ||
+      getString(viewer, "email") ||
+      providerAccountId,
+    metadata: {
+      name: getString(viewer, "name"),
+      email: getString(viewer, "email"),
+      authType: "api_token",
+    },
+  };
+}
+
 export function compactErrorMessage(error: unknown): string {
   const fallback = "Integration request failed";
   if (!error) return fallback;

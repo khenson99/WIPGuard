@@ -16,7 +16,7 @@ function mockIntegrationsFetch(options: FetchMockOptions): void {
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
       if (url === "/api/integrations") {
@@ -42,6 +42,24 @@ function mockIntegrationsFetch(options: FetchMockOptions): void {
               lastObservedAt: null,
               lastRunAt: null,
               lastError,
+            },
+          }),
+        } as Response;
+      }
+
+      if (url.endsWith("/api/integrations/linear/issue-sync")) {
+        return {
+          ok: true,
+          json: async () => ({
+            rule: {
+              id: "rule-linear",
+              key: "linear_issues_sync",
+              enabled: true,
+              config: { rangePreset: "30d" },
+              checkpoint: {},
+              lastObservedAt: null,
+              lastRunAt: null,
+              lastError: null,
             },
           }),
         } as Response;
@@ -285,5 +303,58 @@ describe("IntegrationsTab", () => {
         })
       );
     });
+  });
+
+  it("renders Linear token input and posts the token", async () => {
+    mockIntegrationsFetch({
+      items: [
+        {
+          slug: "linear",
+          provider: "LINEAR",
+          name: "Linear",
+          description: "Linear integration",
+          capabilities: ["Issues", "Projects"],
+          authType: "token",
+          configured: true,
+          missingEnv: [],
+          connected: false,
+          status: "DISCONNECTED",
+          accountLabel: null,
+          connectedAt: null,
+          lastSyncedAt: null,
+          lastError: null,
+          credentialSource: "none",
+          syncHealth: "missing",
+          syncHealthReason: "No integration credentials found.",
+          lastSnapshotAt: null,
+          lastSnapshotStatus: null,
+        },
+      ],
+    });
+
+    render(<IntegrationsTab />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Toggle Linear").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    fireEvent.change(screen.getByLabelText("Linear API Token"), {
+      target: { value: "lin_api_token" },
+    });
+    fireEvent.click(screen.getByText("Connect Linear"));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/integrations/linear/token",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            token: "lin_api_token",
+          }),
+        }),
+      );
+    });
+
+    expect(screen.getByText("Linear Issue Sync")).toBeTruthy();
   });
 });

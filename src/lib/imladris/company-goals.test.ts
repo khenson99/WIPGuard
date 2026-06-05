@@ -213,7 +213,7 @@ describe("buildCompanyGoalsDashboard", () => {
     expect(dashboard.goals).toEqual([]);
     expect(dashboard.emptyState).toEqual({
       title: "No Linear goals synced",
-      description: "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
+      description: "Connect Linear in Settings > Integrations, then run Linear Issue Sync to populate company goals.",
     });
   });
 

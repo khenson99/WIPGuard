@@ -17,7 +17,11 @@ export type IntegrationSlug =
   | "google-ads"
   | "meta-ads"
   | "meta-page"
-  | "pylon";
+  | "pylon"
+  | "posthog"
+  | "linear"
+  | "github"
+  | "unify";
 
 export interface IntegrationItem {
   slug: IntegrationSlug;

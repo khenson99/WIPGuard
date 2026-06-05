@@ -997,7 +997,7 @@ export async function buildCompanyGoalsDashboard(input: {
             description:
               allGoals.length > 0 && trackingConfigured
                 ? "Choose at least one synced Linear project in Goal Setup to track it here."
-                : "Connect Linear in Settings > Integrations or run the Linear sync to populate company goals.",
+                : "Connect Linear in Settings > Integrations, then run Linear Issue Sync to populate company goals.",
           }
         : null,
   };

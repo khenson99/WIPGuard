@@ -107,6 +107,8 @@ export function IntegrationsTab() {
   const [pylonToken, setPylonToken] = useState("");
   const [pylonBaseUrl, setPylonBaseUrl] = useState("");
 
+  const [linearToken, setLinearToken] = useState("");
+
   const [ruleStates, setRuleStates] = useState<Record<string, RuleLoadState>>(createInitialRuleStates);
   const [expandedProviderSlug, setExpandedProviderSlug] = useState<string | null>(null);
 
@@ -401,6 +403,34 @@ export function IntegrationsTab() {
     }
   }, [fetchIntegrations, pylonBaseUrl, pylonToken]);
 
+  const connectLinear = useCallback(async () => {
+    setLoadingProviderAction("linear");
+    setError(null);
+
+    try {
+      const token = linearToken.trim();
+      const payload: { token?: string } = {};
+      if (token) payload.token = token;
+
+      const response = await fetch("/api/integrations/linear/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect Linear"));
+      }
+
+      setLinearToken("");
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : "Failed to connect Linear");
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [fetchIntegrations, linearToken]);
+
   const saveRule = useCallback(
     async (
       ruleId: string,
@@ -580,9 +610,9 @@ export function IntegrationsTab() {
   return (
     <div className="max-w-6xl space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Sources</h2>
+        <h2 className="text-base font-semibold text-foreground">Provider Connections</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Provider operations live here: connection health, source freshness, rule configuration, and remediation actions.
+          Connect provider credentials, check source freshness, configure sync rules, and run provider syncs.
         </p>
       </div>
 
@@ -639,6 +669,9 @@ export function IntegrationsTab() {
               onPylonTokenChange={setPylonToken}
               onPylonBaseUrlChange={setPylonBaseUrl}
               onConnectPylon={connectPylon}
+              linearToken={linearToken}
+              onLinearTokenChange={setLinearToken}
+              onConnectLinear={connectLinear}
               onRuleReload={(ruleId) => loadRule(ruleId)}
               onRuleSave={saveRule}
               onRuleRun={runRule}

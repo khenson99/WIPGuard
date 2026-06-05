@@ -81,6 +81,9 @@ interface ProviderCardProps {
   onPylonTokenChange?: (value: string) => void;
   onPylonBaseUrlChange?: (value: string) => void;
   onConnectPylon?: () => Promise<void>;
+  linearToken?: string;
+  onLinearTokenChange?: (value: string) => void;
+  onConnectLinear?: () => Promise<void>;
   onRuleReload: (ruleId: string) => Promise<void>;
   onRuleSave: (
     ruleId: string,
@@ -123,6 +126,9 @@ export function ProviderCard({
   onPylonTokenChange,
   onPylonBaseUrlChange,
   onConnectPylon,
+  linearToken,
+  onLinearTokenChange,
+  onConnectLinear,
   onRuleReload,
   onRuleSave,
   onRuleRun,
@@ -524,6 +530,56 @@ export function ProviderCard({
                   </button>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {item.slug === "linear" ? (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-sm font-medium text-foreground">Linear Connection</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Linear API Token
+                  <input
+                    type="password"
+                    value={linearToken ?? ""}
+                    onChange={(event) => onLinearTokenChange?.(event.target.value)}
+                    placeholder="lin_api_..."
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onConnectLinear}
+                  disabled={!onConnectLinear || loadingProviderAction === "linear"}
+                  className="btn-primary-theme rounded-md px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {loadingProviderAction === "linear" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </span>
+                  ) : item.connected ? (
+                    "Save Linear Token"
+                  ) : (
+                    "Connect Linear"
+                  )}
+                </button>
+                {canDisconnectStoredConnection ? (
+                  <button
+                    type="button"
+                    onClick={() => onDisconnect(item.slug)}
+                    disabled={loadingProviderAction === item.slug}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create a personal API key in Linear, then run Linear Issue Sync below to pull projects and issues.
+              </p>
             </div>
           ) : null}
 

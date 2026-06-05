@@ -367,10 +367,10 @@ export function CompanyGoalsDashboard({ data }: { data: CompanyGoalsDashboardDat
               {data.emptyState.description}
             </p>
             <Link
-              href="/settings"
+              href="/settings?tab=integrations"
               className="mt-4 inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
             >
-              Open integrations
+              Open Integrations
               <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </section>

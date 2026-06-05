@@ -35,6 +35,20 @@ export const RULE_DESCRIPTORS: RuleDescriptor[] = [
       { key: "contextKey", label: "Context Key", type: "text" },
     ],
   },
+  {
+    id: "linear-issue-sync",
+    provider: "linear",
+    title: "Linear Issue Sync",
+    ruleKey: "linear_issues_sync",
+    endpoint: "/api/integrations/linear/issue-sync",
+    runAction: "sync",
+    supportsDryRun: true,
+    editorType: "generic",
+    fields: [
+      { key: "rangePreset", label: "Range", type: "enum", options: [...RANGE_PRESET_OPTIONS] },
+      { key: "contextKey", label: "Context Key", type: "text" },
+    ],
+  },
 ];
 
 export function descriptorsForProvider(provider: string): RuleDescriptor[] {
