@@ -1223,6 +1223,44 @@ describe("Imladris raw record builder", () => {
     ]));
   });
 
+  it("unwraps uppercase single-value JSON:API attributes before raw record IDs and timestamps", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.HUBSPOT,
+      snapshotKey: "hubspot",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        companies: [
+          {
+            data: {
+              type: "companies",
+              id: "company_json_api_upper_value",
+              attributes: {
+                VALUE: {
+                  created_at: "2026-05-12T08:00:00.000Z",
+                  updated_at: "2026-05-31T08:00:00.000Z",
+                  hs_object_id: "company_json_api_upper_value",
+                  name: "Uppercase value-wrapped company",
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        objectType: "company",
+        externalId: "hubspot:company:company_json_api_upper_value",
+        sourceCreatedAt: "2026-05-12T08:00:00.000Z",
+        occurredAt: "2026-05-12T08:00:00.000Z",
+        sourceUpdatedAt: "2026-05-31T08:00:00.000Z",
+      }),
+    ]));
+  });
+
   it("unwraps scalar timestamp envelopes before raw record freshness extraction", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.HUBSPOT,

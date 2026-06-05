@@ -238,7 +238,8 @@ function expandSingleValueSource(source: Record<string, unknown>): Record<string
 
   const [key, value] = entries[0];
   const nestedValue = wrapperFieldRecord(value);
-  if (!["value", "metricValue", "metric_value"].includes(key) || Object.keys(nestedValue).length === 0) {
+  const scalarWrapperKeys = ["value", "metricValue", "metric_value"].flatMap(providerKeyVariants);
+  if (!scalarWrapperKeys.includes(key) || Object.keys(nestedValue).length === 0) {
     return [source];
   }
 
