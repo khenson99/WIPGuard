@@ -1667,14 +1667,174 @@ function isGoogleSearchConsoleRecord(record: RawSourceRecordRow): boolean {
   return normalizeProviderKey(record.provider) === "GOOGLE_SEARCH_CONSOLE";
 }
 
+function isRawPosthogEvent(record: RawSourceRecordRow): boolean {
+  return normalizeProviderKey(record.provider) === "POSTHOG" && normalizeObjectType(record.objectType) === "event";
+}
+
+function isRawPosthogSnapshotMetricRecord(record: RawSourceRecordRow): boolean {
+  return normalizeProviderKey(record.provider) === "POSTHOG" && !isRawPosthogEvent(record);
+}
+
 function googleSearchConsoleCount(record: RawSourceRecordRow, keys: string[]): number {
   const value = firstValueFromSources(wrapperSources(asRecord(record.payload)), keys);
   return countFrom(value) ?? 0;
 }
 
+function rawPosthogSnapshotCount(record: RawSourceRecordRow, keys: string[]): number | null {
+  if (!isRawPosthogSnapshotMetricRecord(record)) return null;
+  return countFrom(firstValueFromSources(wrapperSources(asRecord(record.payload)), keys));
+}
+
+function latestRawPosthogSnapshotMetricRecord(
+  records: RawSourceRecordRow[],
+  fromDate: Date,
+  toDate: Date,
+  keys: string[],
+): RawSourceRecordRow | null {
+  let latest: RawSourceRecordRow | null = null;
+  for (const record of records) {
+    if (!recordWithinExportWindow(record, fromDate, toDate)) continue;
+    if (rawPosthogSnapshotCount(record, keys) === null) continue;
+    if (!latest || rawRecordTimestamp(record) >= rawRecordTimestamp(latest)) {
+      latest = record;
+    }
+  }
+  return latest;
+}
+
+const RAW_POSTHOG_SNAPSHOT_PAGEVIEW_KEYS = [
+  "pageviewCount",
+  "pageview_count",
+  "pageviews",
+  "page_views",
+  "posthogPageviews",
+  "posthog_pageviews",
+];
+
+const RAW_POSTHOG_SNAPSHOT_CONVERSION_KEYS = [
+  "conversionEventCount",
+  "conversion_event_count",
+  "posthogConversions",
+  "posthog_conversions",
+  "conversions",
+  "conversion_count",
+];
+
+function rawPosthogSnapshotPageviews(records: RawSourceRecordRow[], fromDate: Date, toDate: Date): number {
+  const record = latestRawPosthogSnapshotMetricRecord(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_PAGEVIEW_KEYS);
+  return record ? rawPosthogSnapshotCount(record, RAW_POSTHOG_SNAPSHOT_PAGEVIEW_KEYS) ?? 0 : 0;
+}
+
+function rawPosthogSnapshotConversions(records: RawSourceRecordRow[], fromDate: Date, toDate: Date): number {
+  const record = latestRawPosthogSnapshotMetricRecord(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_CONVERSION_KEYS);
+  return record ? rawPosthogSnapshotCount(record, RAW_POSTHOG_SNAPSHOT_CONVERSION_KEYS) ?? 0 : 0;
+}
+
+function rawPosthogSnapshotEvidenceRecords(
+  records: RawSourceRecordRow[],
+  fromDate: Date,
+  toDate: Date,
+  keys: string[],
+): RawSourceRecordRow[] {
+  const record = latestRawPosthogSnapshotMetricRecord(records, fromDate, toDate, keys);
+  const count = record ? rawPosthogSnapshotCount(record, keys) : null;
+  return count !== null && count > 0 && record ? [record] : [];
+}
+
+function rawPosthogEventIdentity(record: RawSourceRecordRow): string {
+  return (
+    normalizeLookup(
+      firstValueFromSources(wrapperSources(asRecord(record.payload)), [
+        "eventId",
+        "event_id",
+        "eventUuid",
+        "event_uuid",
+        "uuid",
+        "id",
+      ]),
+    ) ?? rawRecordDeduplicationKey(record)
+  );
+}
+
+function latestRawPosthogEventsById(records: RawSourceRecordRow[]): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    const key = rawPosthogEventIdentity(record);
+    const current = latestByKey.get(key);
+    if (!current || rawRecordTimestamp(record) >= rawRecordTimestamp(current)) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
+function rawPosthogMarketingEventTimestamp(record: RawSourceRecordRow): Date | null {
+  return (
+    rawPosthogEventTimestamp(record) ??
+    dateFrom(record.occurredAt) ??
+    dateFrom(record.sourceUpdatedAt) ??
+    dateFrom(record.sourceCreatedAt)
+  );
+}
+
+function rawPosthogMarketingEventName(record: RawSourceRecordRow): string {
+  return normalizeStageKey(
+    firstValueFromSources(wrapperSources(asRecord(record.payload)), [
+      "event",
+      "eventName",
+      "event_name",
+      "name",
+      "type",
+    ]),
+  );
+}
+
+function rawPosthogMarketingEvents(
+  records: RawSourceRecordRow[],
+  fromDate: Date,
+  toDate: Date,
+): RawSourceRecordRow[] {
+  return latestRawPosthogEventsById(records.filter(isRawPosthogEvent)).filter((record) => {
+    const timestamp = rawPosthogMarketingEventTimestamp(record);
+    return timestamp !== null && isWithinDateWindow(timestamp, fromDate, toDate);
+  });
+}
+
+const RAW_POSTHOG_PAGEVIEW_EVENT_KEYS = new Set([
+  "$pageview",
+  "pageview",
+  "pageviewed",
+  "viewedpage",
+]);
+
+const RAW_POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
+  "bookdemo",
+  "contactformsubmitted",
+  "conversion",
+  "demobooked",
+  "demorequested",
+  "formsubmission",
+  "formsubmitted",
+  "leadconverted",
+  "leadcreated",
+  "requestdemo",
+  "signup",
+  "signedup",
+  "trialstarted",
+]);
+
+function isRawPosthogPageviewEvent(record: RawSourceRecordRow): boolean {
+  return RAW_POSTHOG_PAGEVIEW_EVENT_KEYS.has(rawPosthogMarketingEventName(record));
+}
+
+function isRawPosthogMarketingConversionEvent(record: RawSourceRecordRow): boolean {
+  return RAW_POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(rawPosthogMarketingEventName(record));
+}
+
 function rawWebsiteTrafficCounts(records: RawSourceRecordRow[], fromDate: Date, toDate: Date): {
   count: number;
   websiteSessions: number;
+  posthogPageviews: number;
   organicTraffic: number;
   searchClicks: number;
   searchImpressions: number;
@@ -1706,9 +1866,14 @@ function rawWebsiteTrafficCounts(records: RawSourceRecordRow[], fromDate: Date, 
       ]),
     0,
   );
+  const posthogEventPageviews = rawPosthogMarketingEvents(records, fromDate, toDate).filter(isRawPosthogPageviewEvent).length;
+  const posthogPageviews =
+    posthogEventPageviews > 0 ? posthogEventPageviews : rawPosthogSnapshotPageviews(records, fromDate, toDate);
+  const websiteSessions = searchClicks > 0 ? searchClicks : posthogPageviews;
   return {
-    count: searchClicks,
-    websiteSessions: searchClicks,
+    count: websiteSessions,
+    websiteSessions,
+    posthogPageviews,
     organicTraffic: 0,
     searchClicks,
     searchImpressions,
@@ -2112,6 +2277,7 @@ function rawConversionCounts(
   websiteSessions: number;
   webflowFormSubmissions: number;
   hubspotLeadConversions: number;
+  posthogConversions: number;
   identifiedVisitors: number;
 } {
   const webflowFormSubmissions = records.filter(
@@ -2122,7 +2288,12 @@ function rawConversionCounts(
       .filter((record) => isHubspotMarketingConversionRecord(record, fromDate, toDate))
       .map(hubspotMarketingConversionIdentity),
   ).size;
-  const conversions = webflowFormSubmissions + hubspotLeadConversions;
+  const posthogEventConversions = rawPosthogMarketingEvents(records, fromDate, toDate).filter(
+    isRawPosthogMarketingConversionEvent,
+  ).length;
+  const posthogConversions =
+    posthogEventConversions > 0 ? posthogEventConversions : rawPosthogSnapshotConversions(records, fromDate, toDate);
+  const conversions = webflowFormSubmissions + hubspotLeadConversions + posthogConversions;
   const websiteSessions = rawWebsiteTraffic.websiteSessions;
   return {
     rate: websiteSessions > 0 ? roundRatio((conversions / websiteSessions) * 100) : null,
@@ -2130,6 +2301,7 @@ function rawConversionCounts(
     websiteSessions,
     webflowFormSubmissions,
     hubspotLeadConversions,
+    posthogConversions,
     identifiedVisitors: rawIdentifiedVisitorCount(records, fromDate, toDate),
   };
 }
@@ -2143,10 +2315,13 @@ function rawMarketingPipelineEfficiencyValues(
 ): {
   ratio: number | null;
   qualifiedPipeline: number;
+  qualifiedPipelineCount: number;
   acquisitionSpend: number;
   websiteSessions: number;
   webflowFormSubmissions: number;
   hubspotLeadConversions: number;
+  posthogPageviews: number;
+  posthogConversions: number;
   organicTraffic: number;
   searchClicks: number;
   searchImpressions: number;
@@ -2165,10 +2340,13 @@ function rawMarketingPipelineEfficiencyValues(
   return {
     ratio: acquisitionSpend > 0 ? roundRatio(qualifiedPipeline / acquisitionSpend) : null,
     qualifiedPipeline,
+    qualifiedPipelineCount: pipelineDeals.length,
     acquisitionSpend,
     websiteSessions: rawWebsiteTraffic.websiteSessions,
     webflowFormSubmissions: rawConversions.webflowFormSubmissions,
     hubspotLeadConversions: rawConversions.hubspotLeadConversions,
+    posthogPageviews: rawWebsiteTraffic.posthogPageviews,
+    posthogConversions: rawConversions.posthogConversions,
     organicTraffic: rawWebsiteTraffic.organicTraffic,
     searchClicks: rawWebsiteTraffic.searchClicks,
     searchImpressions: rawWebsiteTraffic.searchImpressions,
@@ -2377,12 +2555,109 @@ function supportAccountIdentity(record: RawSourceRecordRow): string {
   return identity ?? `support:${rawRecordIdentityFallback(record)}`;
 }
 
+function customerSuccessAccountId(record: RawSourceRecordRow): string | null {
+  const payload = asRecord(record.payload);
+  const sources = wrapperSources(payload);
+  const nestedSources = sources.flatMap((source) => [
+    nestedRecord(source.account),
+    nestedRecord(source.company),
+    nestedRecord(source.customer),
+    nestedRecord(source.contact),
+    nestedRecord(source.organization),
+    nestedRecord(source.workspace),
+  ]);
+  return normalizeLookup(
+    firstValueFromSources([...sources, ...nestedSources], [
+      "accountId",
+      "account_id",
+      "companyId",
+      "company_id",
+      "hubspotCompanyId",
+      "hubspot_company_id",
+      "customerId",
+      "customer_id",
+      "contactId",
+      "contact_id",
+      "organizationId",
+      "organization_id",
+      "workspaceId",
+      "workspace_id",
+      "email",
+    ]),
+  );
+}
+
+function isRawPosthogCustomerUsageRecord(record: RawSourceRecordRow): boolean {
+  if (normalizeProviderKey(record.provider) !== "POSTHOG") return false;
+  if (!customerSuccessAccountId(record)) return false;
+  return [
+    "account_usage",
+    "account_activity",
+    "customer_activity",
+    "product_usage",
+    "user_activity",
+    "event",
+  ].includes(normalizeObjectType(record.objectType));
+}
+
+function isRawCollaborationSignal(record: RawSourceRecordRow): boolean {
+  const provider = normalizeProviderKey(record.provider);
+  const objectType = normalizeObjectType(record.objectType);
+  const supported =
+    (provider === "GOOGLE_WORKSPACE" &&
+      ["calendar_event", "email_thread", "document", "event", "thread", "file"].includes(objectType)) ||
+    (provider === "SLACK" && ["message", "thread"].includes(objectType));
+  return supported && customerSuccessAccountId(record) !== null;
+}
+
+function rawCollaborationSignalEventId(record: RawSourceRecordRow): string | null {
+  const sources = wrapperSources(asRecord(record.payload));
+  return normalizeLookup(
+    firstValueFromSources(sources, [
+      "eventId",
+      "event_id",
+      "messageId",
+      "message_id",
+      "threadId",
+      "thread_id",
+      "threadTs",
+      "thread_ts",
+      "ts",
+      "id",
+    ]),
+  );
+}
+
+function rawCollaborationSignalDeduplicationKey(record: RawSourceRecordRow): string {
+  const accountId = customerSuccessAccountId(record);
+  const eventId = rawCollaborationSignalEventId(record);
+  if (accountId && eventId) {
+    return `${normalizeProviderKey(record.provider)}:${normalizeObjectType(record.objectType)}:${accountId}:${eventId}`;
+  }
+  return rawRecordDeduplicationKey(record);
+}
+
+function latestRawCollaborationSignalsById(records: RawSourceRecordRow[]): RawSourceRecordRow[] {
+  const latestByKey = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    if (!isRawCollaborationSignal(record)) continue;
+    const key = rawCollaborationSignalDeduplicationKey(record);
+    const current = latestByKey.get(key);
+    if (!current || rawRecordTimestamp(record) >= rawRecordTimestamp(current)) {
+      latestByKey.set(key, record);
+    }
+  }
+  return [...latestByKey.values()];
+}
+
 function rawCustomerSuccessCounts(records: RawSourceRecordRow[], fromDate: Date, toDate: Date): {
   customerHealth: number;
   riskScore: number;
   atRiskAccounts: number;
   openSupportIssues: number;
   escalations: number;
+  accountsWithBillingRisk: number;
+  lowUsageAccounts: number;
   customerActivity: number;
   supportInteractions: number;
   productUsageRecords: number;
@@ -2392,10 +2667,22 @@ function rawCustomerSuccessCounts(records: RawSourceRecordRow[], fromDate: Date,
   const supportRecords = records.filter(
     (record) => recordWithinExportWindow(record, fromDate, toDate) && isCustomerSupportRecord(record),
   );
+  const productUsageRecords = records.filter(
+    (record) => recordWithinExportWindow(record, fromDate, toDate) && isRawPosthogCustomerUsageRecord(record),
+  );
+  const collaborationSignals = latestRawCollaborationSignalsById(
+    records.filter((record) => recordWithinExportWindow(record, fromDate, toDate)),
+  );
   const openSupportRecords = supportRecords.filter((record) => isOpenSupportIssue(record, toDate));
   const escalations = openSupportRecords.filter((record) => isEscalatedSupportIssue(record, toDate));
   const atRiskAccounts = new Set(openSupportRecords.map(supportAccountIdentity)).size;
-  const activeAccounts = new Set(supportRecords.map(supportAccountIdentity)).size;
+  const activeAccounts = new Set(
+    [
+      ...supportRecords.map(supportAccountIdentity),
+      ...productUsageRecords.map(customerSuccessAccountId),
+      ...collaborationSignals.map(customerSuccessAccountId),
+    ].filter((identity): identity is string => Boolean(identity)),
+  ).size;
   const riskScore = Math.min(100, openSupportRecords.length * 12 + escalations.length * 18);
   return {
     customerHealth: Math.max(0, 100 - riskScore),
@@ -2403,10 +2690,12 @@ function rawCustomerSuccessCounts(records: RawSourceRecordRow[], fromDate: Date,
     atRiskAccounts,
     openSupportIssues: openSupportRecords.length,
     escalations: escalations.length,
-    customerActivity: supportRecords.length,
+    accountsWithBillingRisk: 0,
+    lowUsageAccounts: 0,
+    customerActivity: supportRecords.length + productUsageRecords.length + collaborationSignals.length,
     supportInteractions: supportRecords.length,
-    productUsageRecords: 0,
-    collaborationSignals: 0,
+    productUsageRecords: productUsageRecords.length,
+    collaborationSignals: collaborationSignals.length,
     activeAccounts,
   };
 }
@@ -2655,7 +2944,7 @@ function rawWebsiteTrafficMetricEvidenceRecords(
   fromDate: Date,
   toDate: Date,
 ): RawSourceRecordRow[] {
-  return records.filter(
+  const searchEvidence = records.filter(
     (record) =>
       recordWithinExportWindow(record, fromDate, toDate) &&
       isGoogleSearchConsoleRecord(record) &&
@@ -2674,6 +2963,12 @@ function rawWebsiteTrafficMetricEvidenceRecords(
           "search_impressions",
         ]) > 0),
   );
+  const posthogPageviewEvidence = rawPosthogMarketingEvents(records, fromDate, toDate).filter(isRawPosthogPageviewEvent);
+  const posthogSnapshotEvidence =
+    posthogPageviewEvidence.length > 0
+      ? []
+      : rawPosthogSnapshotEvidenceRecords(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_PAGEVIEW_KEYS);
+  return [...searchEvidence, ...posthogPageviewEvidence, ...posthogSnapshotEvidence];
 }
 
 function rawConversionMetricEvidenceRecords(
@@ -2681,7 +2976,7 @@ function rawConversionMetricEvidenceRecords(
   fromDate: Date,
   toDate: Date,
 ): RawSourceRecordRow[] {
-  return records.filter(
+  const searchWebflowHubspotEvidence = records.filter(
     (record) =>
       (recordWithinExportWindow(record, fromDate, toDate) &&
         (isWebflowFormSubmission(record) ||
@@ -2695,6 +2990,14 @@ function rawConversionMetricEvidenceRecords(
             ]) > 0))) ||
       isHubspotMarketingConversionRecord(record, fromDate, toDate),
   );
+  const posthogMarketingEvidence = rawPosthogMarketingEvents(records, fromDate, toDate).filter(
+    (record) => isRawPosthogPageviewEvent(record) || isRawPosthogMarketingConversionEvent(record),
+  );
+  const posthogSnapshotEvidence =
+    posthogMarketingEvidence.some(isRawPosthogMarketingConversionEvent)
+      ? []
+      : rawPosthogSnapshotEvidenceRecords(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_CONVERSION_KEYS);
+  return [...searchWebflowHubspotEvidence, ...posthogMarketingEvidence, ...posthogSnapshotEvidence];
 }
 
 function rawPipelineEfficiencyMetricEvidenceRecords(
@@ -2702,7 +3005,7 @@ function rawPipelineEfficiencyMetricEvidenceRecords(
   fromDate: Date,
   toDate: Date,
 ): RawSourceRecordRow[] {
-  return records.filter(
+  const sourceEvidence = records.filter(
     (record) =>
       recordWithinExportWindow(record, fromDate, toDate) &&
       (isPaidAdSpendRecord(record) ||
@@ -2710,6 +3013,14 @@ function rawPipelineEfficiencyMetricEvidenceRecords(
         isGoogleSearchConsoleRecord(record) ||
         isIdentifiedVisitorRecord(record)),
   );
+  const posthogMarketingEvidence = rawPosthogMarketingEvents(records, fromDate, toDate).filter(
+    (record) => isRawPosthogPageviewEvent(record) || isRawPosthogMarketingConversionEvent(record),
+  );
+  const posthogSnapshotEvidence = [
+    ...rawPosthogSnapshotEvidenceRecords(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_PAGEVIEW_KEYS),
+    ...rawPosthogSnapshotEvidenceRecords(records, fromDate, toDate, RAW_POSTHOG_SNAPSHOT_CONVERSION_KEYS),
+  ].filter((record, index, evidence) => evidence.findIndex((candidate) => candidate.id === record.id) === index);
+  return [...sourceEvidence, ...posthogMarketingEvidence, ...posthogSnapshotEvidence];
 }
 
 function rawActivationMetricEvidenceRecords(
@@ -2742,6 +3053,19 @@ function rawCustomerSuccessMetricEvidenceRecords(
   return records.filter(
     (record) => recordWithinExportWindow(record, fromDate, toDate) && isCustomerSupportRecord(record),
   );
+}
+
+function rawCustomerActivityMetricEvidenceRecords(
+  records: RawSourceRecordRow[],
+  fromDate: Date,
+  toDate: Date,
+): RawSourceRecordRow[] {
+  const windowedRecords = records.filter((record) => recordWithinExportWindow(record, fromDate, toDate));
+  return [
+    ...windowedRecords.filter(isCustomerSupportRecord),
+    ...windowedRecords.filter(isRawPosthogCustomerUsageRecord),
+    ...latestRawCollaborationSignalsById(windowedRecords),
+  ];
 }
 
 function rawRetentionMetricEvidenceRecords(
@@ -2827,6 +3151,11 @@ function rawDerivedMetricFallbacks(input: {
   );
   const activationEvidenceRecords = rawActivationMetricEvidenceRecords(input.records, input.fromDate, input.toDate);
   const customerSuccessEvidenceRecords = rawCustomerSuccessMetricEvidenceRecords(
+    input.records,
+    input.fromDate,
+    input.toDate,
+  );
+  const customerActivityEvidenceRecords = rawCustomerActivityMetricEvidenceRecords(
     input.records,
     input.fromDate,
     input.toDate,
@@ -3021,6 +3350,7 @@ function rawDerivedMetricFallbacks(input: {
       value: {
         count: input.rawWebsiteTraffic.count,
         websiteSessions: input.rawWebsiteTraffic.websiteSessions,
+        posthogPageviews: input.rawWebsiteTraffic.posthogPageviews,
         organicTraffic: input.rawWebsiteTraffic.organicTraffic,
         searchClicks: input.rawWebsiteTraffic.searchClicks,
         searchImpressions: input.rawWebsiteTraffic.searchImpressions,
@@ -3047,6 +3377,7 @@ function rawDerivedMetricFallbacks(input: {
         websiteSessions: input.rawConversions.websiteSessions,
         webflowFormSubmissions: input.rawConversions.webflowFormSubmissions,
         hubspotLeadConversions: input.rawConversions.hubspotLeadConversions,
+        posthogConversions: input.rawConversions.posthogConversions,
         identifiedVisitors: input.rawConversions.identifiedVisitors,
         source: "raw_source_records",
       },
@@ -3068,10 +3399,13 @@ function rawDerivedMetricFallbacks(input: {
       value: {
         ratio: input.rawPipelineEfficiency.ratio,
         qualifiedPipeline: input.rawPipelineEfficiency.qualifiedPipeline,
+        qualifiedPipelineCount: input.rawPipelineEfficiency.qualifiedPipelineCount,
         acquisitionSpend: input.rawPipelineEfficiency.acquisitionSpend,
         websiteSessions: input.rawPipelineEfficiency.websiteSessions,
         webflowFormSubmissions: input.rawPipelineEfficiency.webflowFormSubmissions,
         hubspotLeadConversions: input.rawPipelineEfficiency.hubspotLeadConversions,
+        posthogPageviews: input.rawPipelineEfficiency.posthogPageviews,
+        posthogConversions: input.rawPipelineEfficiency.posthogConversions,
         organicTraffic: input.rawPipelineEfficiency.organicTraffic,
         searchClicks: input.rawPipelineEfficiency.searchClicks,
         searchImpressions: input.rawPipelineEfficiency.searchImpressions,
@@ -3131,6 +3465,8 @@ function rawDerivedMetricFallbacks(input: {
         atRiskAccounts: input.rawCustomerSuccess.atRiskAccounts,
         openSupportIssues: input.rawCustomerSuccess.openSupportIssues,
         escalations: input.rawCustomerSuccess.escalations,
+        accountsWithBillingRisk: input.rawCustomerSuccess.accountsWithBillingRisk,
+        lowUsageAccounts: input.rawCustomerSuccess.lowUsageAccounts,
         source: "raw_source_records",
       },
       calculationVersion: "raw-customer-health-investor-fallback-v1",
@@ -3139,14 +3475,14 @@ function rawDerivedMetricFallbacks(input: {
 
   if (
     !input.hasCustomerActivityMetric &&
-    input.rawCustomerSuccess.supportInteractions > 0 &&
-    customerSuccessEvidenceRecords.length > 0
+    input.rawCustomerSuccess.customerActivity > 0 &&
+    customerActivityEvidenceRecords.length > 0
   ) {
     fallbackRows.set("customer_success.customer_activity", {
       ...base,
       department: "customer-success",
       unit: "count",
-      lineage: rawMetricLineage(customerSuccessEvidenceRecords),
+      lineage: rawMetricLineage(customerActivityEvidenceRecords),
       value: {
         count: input.rawCustomerSuccess.customerActivity,
         supportInteractions: input.rawCustomerSuccess.supportInteractions,
@@ -3174,6 +3510,8 @@ function rawDerivedMetricFallbacks(input: {
         atRiskAccounts: input.rawCustomerSuccess.atRiskAccounts,
         openSupportIssues: input.rawCustomerSuccess.openSupportIssues,
         escalations: input.rawCustomerSuccess.escalations,
+        accountsWithBillingRisk: input.rawCustomerSuccess.accountsWithBillingRisk,
+        lowUsageAccounts: input.rawCustomerSuccess.lowUsageAccounts,
         source: "raw_source_records",
       },
       calculationVersion: "raw-retention-risk-investor-fallback-v1",
@@ -3625,8 +3963,10 @@ export async function buildInvestorDashboardExport(input: {
   const canonicalCustomerTotal = countFromFields(customerCount, "count", "activeCustomers", "active_customers");
   const useRawCustomerBreakdown =
     canonicalCustomerTotal === null || canonicalCustomerTotal === rawCustomers.total;
-  const useRawCustomerSuccess = rawCustomerSuccess.supportInteractions > 0;
+  const useRawCustomerSuccessRisk = rawCustomerSuccess.supportInteractions > 0;
+  const useRawCustomerActivity = rawCustomerSuccess.customerActivity > 0;
   const useRawGrossMargin = !metricsByKey.has("finance.gross_margin");
+  const useRawQualifiedPipeline = !metricsByKey.has("sales.qualified_pipeline");
 
   return {
     summary: {
@@ -3703,7 +4043,8 @@ export async function buildInvestorDashboardExport(input: {
             (useRawGrossMargin ? rawGrossMargin.stripeProcessingFees : 0),
         ),
       qualifiedPipelineCount:
-        countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ?? 0,
+        countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ??
+        (useRawQualifiedPipeline ? rawPipelineEfficiency.qualifiedPipelineCount : 0),
       collaborationTouchCount:
         countFromFields(pipeline, "collaborationTouchCount", "collaboration_touch_count") ?? 0,
       collaborationCoverage: roundRatio(
@@ -3728,6 +4069,9 @@ export async function buildInvestorDashboardExport(input: {
       websiteSessions:
         countFromFields(websiteTraffic, "websiteSessions", "website_sessions", "sessions") ??
         rawWebsiteTraffic.websiteSessions,
+      posthogPageviews:
+        countFromFields(websiteTraffic, "posthogPageviews", "posthog_pageviews") ??
+        rawWebsiteTraffic.posthogPageviews,
       organicTraffic:
         countFromFields(websiteTraffic, "organicTraffic", "organic_traffic") ??
         rawWebsiteTraffic.organicTraffic,
@@ -3760,6 +4104,9 @@ export async function buildInvestorDashboardExport(input: {
           "hubspotConversions",
           "hubspot_conversions",
         ) ?? rawConversions.hubspotLeadConversions,
+      posthogConversions:
+        countFromFields(conversionRate, "posthogConversions", "posthog_conversions") ??
+        rawConversions.posthogConversions,
       identifiedVisitors:
         countFromFields(conversionRate, "identifiedVisitors", "identified_visitors") ??
         rawConversions.identifiedVisitors,
@@ -3783,25 +4130,28 @@ export async function buildInvestorDashboardExport(input: {
         rawActivation.eligibleAccounts,
       customerHealth:
         numberFromFields(customerHealth, "score", "customerHealth", "customer_health") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.customerHealth : 0),
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.customerHealth : 0),
       atRiskAccounts:
         countFromFields(customerHealth, "atRiskAccounts", "at_risk_accounts") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.atRiskAccounts : 0),
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.atRiskAccounts : 0),
       openSupportIssues:
         countFromFields(customerHealth, "openSupportIssues", "open_support_issues") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.openSupportIssues : 0),
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.openSupportIssues : 0),
       customerActivity:
         countFromFields(customerActivity, "count", "customerActivity", "customer_activity") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.customerActivity : 0),
+        (useRawCustomerActivity ? rawCustomerSuccess.customerActivity : 0),
       supportInteractions:
         countFromFields(customerActivity, "supportInteractions", "support_interactions") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.supportInteractions : 0),
+        (useRawCustomerActivity ? rawCustomerSuccess.supportInteractions : 0),
       productUsageRecords:
         countFromFields(customerActivity, "productUsageRecords", "product_usage_records") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.productUsageRecords : 0),
+        (useRawCustomerActivity ? rawCustomerSuccess.productUsageRecords : 0),
       collaborationSignals:
         countFromFields(customerActivity, "collaborationSignals", "collaboration_signals") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.collaborationSignals : 0),
+        (useRawCustomerActivity ? rawCustomerSuccess.collaborationSignals : 0),
+      customerActivityActiveAccounts:
+        countFromFields(customerActivity, "activeAccounts", "active_accounts") ??
+        (useRawCustomerActivity ? rawCustomerSuccess.activeAccounts : 0),
       churnRate:
         numberFromFields(churnRate, "rate", "churnRate", "churn_rate") ??
         rawRetention.churnRate ??
@@ -3810,23 +4160,66 @@ export async function buildInvestorDashboardExport(input: {
         numberFromFields(retentionRate, "rate", "retentionRate", "retention_rate") ??
         rawRetention.retentionRate ??
         0,
+      churnedCustomers:
+        countFromFields(churnRate, "churnedCustomers", "churned_customers") ??
+        countFromFields(retentionRate, "churnedCustomers", "churned_customers") ??
+        rawRetention.churnedCustomers,
+      retainedCustomers:
+        countFromFields(retentionRate, "retainedCustomers", "retained_customers") ??
+        countFromFields(churnRate, "retainedCustomers", "retained_customers") ??
+        rawRetention.retainedCustomers,
+      retentionCustomerBase:
+        countFromFields(retentionRate, "customerBase", "customer_base") ??
+        countFromFields(churnRate, "customerBase", "customer_base") ??
+        rawRetention.customerBase,
       retentionRiskScore:
         numberFromFields(retentionRisk, "score", "riskScore", "risk_score") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.riskScore : 0),
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.riskScore : 0),
       retentionRiskAccounts:
         countFromFields(retentionRisk, "atRiskAccounts", "at_risk_accounts") ??
-        (useRawCustomerSuccess ? rawCustomerSuccess.atRiskAccounts : 0),
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.atRiskAccounts : 0),
+      retentionRiskEscalations:
+        countFromFields(retentionRisk, "escalations", "escalationCount", "escalation_count") ??
+        countFromFields(customerHealth, "escalations", "escalationCount", "escalation_count") ??
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.escalations : 0),
+      retentionRiskBillingRiskAccounts:
+        countFromFields(
+          retentionRisk,
+          "accountsWithBillingRisk",
+          "accounts_with_billing_risk",
+          "billingRiskAccounts",
+          "billing_risk_accounts",
+        ) ??
+        countFromFields(
+          customerHealth,
+          "accountsWithBillingRisk",
+          "accounts_with_billing_risk",
+          "billingRiskAccounts",
+          "billing_risk_accounts",
+        ) ??
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.accountsWithBillingRisk : 0),
+      retentionRiskLowUsageAccounts:
+        countFromFields(retentionRisk, "lowUsageAccounts", "low_usage_accounts") ??
+        countFromFields(customerHealth, "lowUsageAccounts", "low_usage_accounts") ??
+        (useRawCustomerSuccessRisk ? rawCustomerSuccess.lowUsageAccounts : 0),
       currency,
     },
     weekly: buildWeekly(dedupedRawRecords, input.fromDate, input.toDate),
     pipeline: {
-      qualifiedPipelineValue: roundMoney(numberFrom(pipeline.amount) ?? 0),
-      qualifiedPipelineCount: countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ?? 0,
+      qualifiedPipelineValue: roundMoney(
+        numberFrom(pipeline.amount) ??
+          (useRawQualifiedPipeline ? rawPipelineEfficiency.qualifiedPipeline : 0),
+      ),
+      qualifiedPipelineCount:
+        countFromFields(pipeline, "qualifiedDealCount", "qualified_deal_count") ??
+        (useRawQualifiedPipeline ? rawPipelineEfficiency.qualifiedPipelineCount : 0),
       collaborationTouchCount: countFromFields(pipeline, "collaborationTouchCount", "collaboration_touch_count") ?? 0,
       collaborationCoverage: roundRatio(
         ratioFrom(pipeline.collaborationCoverage ?? pipeline.collaboration_coverage) ?? 0,
       ),
-      currency: currencyFrom(pipeline, mrr, runway, netBurn),
+      currency: useRawQualifiedPipeline
+        ? currencyFrom({ currency: rawPipelineEfficiency.currency }, pipeline, mrr, runway, netBurn)
+        : currencyFrom(pipeline, mrr, runway, netBurn),
     },
     metrics: buildMetrics(metricsByKey, rawFallbacks),
     meta: {

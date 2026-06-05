@@ -17202,6 +17202,7 @@ describe("Imladris canonical materialization", () => {
             IntegrationProvider.UNIFY,
             IntegrationProvider.HUBSPOT,
             IntegrationProvider.META_PAGE,
+            IntegrationProvider.POSTHOG,
           ],
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
@@ -17230,6 +17231,8 @@ describe("Imladris canonical materialization", () => {
           websiteSessions: 2_000,
           webflowFormSubmissions: 25,
           hubspotLeadConversions: 0,
+          posthogPageviews: 0,
+          posthogConversions: 0,
           organicTraffic: 500,
           searchClicks: 120,
           searchImpressions: 2400,
@@ -17246,6 +17249,8 @@ describe("Imladris canonical materialization", () => {
           websiteSessions: 2_000,
           webflowFormSubmissions: 25,
           hubspotLeadConversions: 0,
+          posthogPageviews: 0,
+          posthogConversions: 0,
           organicTraffic: 500,
           searchClicks: 120,
           searchImpressions: 2400,
@@ -17273,6 +17278,7 @@ describe("Imladris canonical materialization", () => {
           value: {
             count: 2_500,
             websiteSessions: 2_000,
+            posthogPageviews: 0,
             organicTraffic: 500,
             searchClicks: 120,
             searchImpressions: 2400,
@@ -17302,6 +17308,7 @@ describe("Imladris canonical materialization", () => {
             websiteSessions: 2_000,
             webflowFormSubmissions: 25,
             hubspotLeadConversions: 0,
+            posthogConversions: 0,
             identifiedVisitors: 2,
           },
         }),
@@ -17750,6 +17757,7 @@ describe("Imladris canonical materialization", () => {
             websiteSessions: 1_000,
             webflowFormSubmissions: 0,
             hubspotLeadConversions: 2,
+            posthogConversions: 0,
             identifiedVisitors: 0,
           },
         }),
@@ -17850,6 +17858,7 @@ describe("Imladris canonical materialization", () => {
             websiteSessions: 1_000,
             webflowFormSubmissions: 0,
             hubspotLeadConversions: 1,
+            posthogConversions: 0,
             identifiedVisitors: 0,
           },
         }),
@@ -17929,6 +17938,7 @@ describe("Imladris canonical materialization", () => {
             websiteSessions: 1_000,
             webflowFormSubmissions: 25,
             hubspotLeadConversions: 0,
+            posthogConversions: 0,
             identifiedVisitors: 0,
           },
         }),
@@ -18007,6 +18017,7 @@ describe("Imladris canonical materialization", () => {
           value: {
             count: 400,
             websiteSessions: 0,
+            posthogPageviews: 0,
             organicTraffic: 0,
             searchClicks: 400,
             searchImpressions: 4_000,
@@ -18029,8 +18040,324 @@ describe("Imladris canonical materialization", () => {
             websiteSessions: 400,
             webflowFormSubmissions: 20,
             hubspotLeadConversions: 0,
+            posthogConversions: 0,
             identifiedVisitors: 0,
           },
+        }),
+      }),
+    );
+  });
+
+  it("uses PostHog pageview and conversion events for marketing traffic and conversion rate", async () => {
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_posthog_pageview_1",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:pageview-1",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              eventId: "evt_pageview_1",
+              event: "$pageview",
+              timestamp: "2026-05-12T00:00:00.000Z",
+              properties: { current_url: "https://imladris.example/pricing" },
+            },
+          },
+          {
+            id: "raw_posthog_pageview_2",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:pageview-2",
+            occurredAt: new Date("2026-05-12T00:01:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:01:00.000Z"),
+            payload: {
+              event_id: "evt_pageview_2",
+              event: "page_view",
+              timestamp: "2026-05-12T00:01:00.000Z",
+              properties: { path: "/docs" },
+            },
+          },
+          {
+            id: "raw_posthog_pageview_2_import",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:import:pageview-2",
+            occurredAt: new Date("2026-05-12T00:01:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:02:00.000Z"),
+            payload: {
+              eventId: "evt_pageview_2",
+              event: "pageview",
+              timestamp: "2026-05-12T00:01:00.000Z",
+              properties: { path: "/docs" },
+            },
+          },
+          {
+            id: "raw_posthog_demo_booked",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:demo-booked",
+            occurredAt: new Date("2026-05-13T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-13T00:00:00.000Z"),
+            payload: {
+              eventId: "evt_demo_booked",
+              event: "demo_booked",
+              timestamp: "2026-05-13T00:00:00.000Z",
+              distinct_id: "visitor_1",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({
+          id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
+          ...create,
+        })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining([IntegrationProvider.POSTHOG]),
+          }),
+        }),
+      }),
+    );
+    expect(result.value).toMatchObject({
+      posthogPageviews: 2,
+      posthogConversions: 1,
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId_userId_metricKey_periodEnd_calculationVersion: expect.objectContaining({
+            metricKey: "marketing.website_traffic",
+            periodEnd,
+          }),
+        }),
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            count: 2,
+            posthogPageviews: 2,
+          }),
+        }),
+      }),
+    );
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId_userId_metricKey_periodEnd_calculationVersion: expect.objectContaining({
+            metricKey: "marketing.conversion_rate",
+            periodEnd,
+          }),
+        }),
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            rate: 50,
+            conversions: 1,
+            websiteSessions: 2,
+            posthogConversions: 1,
+          }),
+        }),
+      }),
+    );
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          rawRecordId: "raw_posthog_pageview_1",
+          sourceKey: "posthog",
+          sourceType: "event",
+          sourceId: "posthog:event:pageview-1",
+        }),
+        expect.objectContaining({
+          rawRecordId: "raw_posthog_demo_booked",
+          sourceKey: "posthog",
+          sourceType: "event",
+          sourceId: "posthog:event:demo-booked",
+        }),
+      ]),
+    });
+  });
+
+  it("uses PostHog snapshot summary counts when event child records are unavailable", async () => {
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_posthog_snapshot_marketing_summary",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "snapshot",
+            externalId: "posthog:snapshot:summary",
+            occurredAt: new Date("2026-05-29T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-29T00:00:00.000Z"),
+            payload: {
+              pageviewCount: 800,
+              conversionEventCount: 16,
+              eventNameCounts: { "$pageview": 800, demobooked: 16 },
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({
+          id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
+          ...create,
+        })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    const result = await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(result.value).toMatchObject({
+      posthogPageviews: 800,
+      posthogConversions: 16,
+    });
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId_userId_metricKey_periodEnd_calculationVersion: expect.objectContaining({
+            metricKey: "marketing.website_traffic",
+            periodEnd,
+          }),
+        }),
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            count: 800,
+            posthogPageviews: 800,
+          }),
+        }),
+      }),
+    );
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId_userId_metricKey_periodEnd_calculationVersion: expect.objectContaining({
+            metricKey: "marketing.conversion_rate",
+            periodEnd,
+          }),
+        }),
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            rate: 2,
+            conversions: 16,
+            websiteSessions: 800,
+            posthogConversions: 16,
+          }),
+        }),
+      }),
+    );
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          rawRecordId: "raw_posthog_snapshot_marketing_summary",
+          sourceKey: "posthog",
+          sourceType: "snapshot",
+          sourceId: "posthog:snapshot:summary",
+        }),
+      ]),
+    });
+  });
+
+  it("does not add PostHog pageviews on top of Google Analytics sessions", async () => {
+    const periodEnd = new Date("2026-05-29T00:00:00.000Z");
+    const prisma = {
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_ga_posthog_overlap_sessions",
+            provider: IntegrationProvider.GOOGLE_ANALYTICS,
+            objectType: "traffic_summary",
+            externalId: "ga:posthog-overlap",
+            occurredAt: new Date("2026-05-12T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:00:00.000Z"),
+            payload: {
+              sessions: 1_000,
+            },
+          },
+          {
+            id: "raw_posthog_overlap_pageview",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:overlap-pageview",
+            occurredAt: new Date("2026-05-12T00:01:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-12T00:01:00.000Z"),
+            payload: {
+              eventId: "evt_overlap_pageview",
+              event: "$pageview",
+              timestamp: "2026-05-12T00:01:00.000Z",
+            },
+          },
+        ]),
+      },
+      imladrisCanonicalMetricValue: {
+        upsert: vi.fn(async ({ create }) => ({
+          id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
+          ...create,
+        })),
+      },
+      imladrisMetricLineage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      },
+    };
+
+    await materializeImladrisMarketingMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId_userId_metricKey_periodEnd_calculationVersion: expect.objectContaining({
+            metricKey: "marketing.website_traffic",
+            periodEnd,
+          }),
+        }),
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            count: 1_000,
+            websiteSessions: 1_000,
+            posthogPageviews: 1,
+          }),
         }),
       }),
     );

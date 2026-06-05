@@ -345,6 +345,9 @@ function objectTypeForArray(path: string[], snapshotKey: string): string {
   if (snapshotKey === "mercury" && sourcePath === "accounts") {
     return "account_balance";
   }
+  if (snapshotKey === "hubspot" && sourcePath === "contactRecords") {
+    return "contact";
+  }
   return normalizeImladrisObjectType(path.at(-1) ?? "record");
 }
 

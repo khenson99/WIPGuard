@@ -62,7 +62,7 @@ function formatBenchmarkValue(
 function conversionBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
   return `${formatNumber(summary.webflowFormSubmissions)} Webflow / ${formatNumber(
     summary.hubspotLeadConversions,
-  )} HubSpot / ${formatNumber(summary.identifiedVisitors)} identified`;
+  )} HubSpot / ${formatNumber(summary.posthogConversions)} PostHog / ${formatNumber(summary.identifiedVisitors)} identified`;
 }
 
 function pipelineEfficiencyDetail(summary: CompanyTrackerDashboardData["summary"]): string {
@@ -70,6 +70,28 @@ function pipelineEfficiencyDetail(summary: CompanyTrackerDashboardData["summary"
     summary.acquisitionSpend,
     summary.currency,
   )} spend`;
+}
+
+function arrDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `MRR ${formatCurrency(summary.mrr, summary.currency)} x 12`;
+}
+
+function mrrDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `ARR equivalent ${formatCurrency(summary.arr, summary.currency)}`;
+}
+
+function revenueMixDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatCurrency(summary.subscriptionRevenue, summary.currency)} subscription / ${formatCurrency(
+    summary.servicesRevenue,
+    summary.currency,
+  )} services`;
+}
+
+function revenueShareDetail(value: unknown, total: unknown): string {
+  const parsedValue = numberValue(value);
+  const parsedTotal = numberValue(total);
+  if (parsedValue === null || parsedTotal === null || parsedTotal <= 0) return "Missing revenue mix";
+  return `${((parsedValue / parsedTotal) * 100).toFixed(1)}% of revenue`;
 }
 
 function formatRatioPercent(value: unknown): string {
@@ -110,6 +132,23 @@ function burnDetail(summary: CompanyTrackerDashboardData["summary"]): string {
   )} in`;
 }
 
+function cashBalanceDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.runwayMonths, "months")} runway / ${formatCurrency(
+    summary.netBurn,
+    summary.currency,
+  )} net burn`;
+}
+
+function expensesDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  const expenses = numberValue(summary.expenses);
+  const costOfGoodsSold = numberValue(summary.costOfGoodsSold);
+  const operatingExpenses = expenses !== null && costOfGoodsSold !== null ? expenses - costOfGoodsSold : null;
+  return `${formatCurrency(summary.costOfGoodsSold, summary.currency)} COGS / ${formatCurrency(
+    operatingExpenses,
+    summary.currency,
+  )} operating`;
+}
+
 function grossMarginDetail(summary: CompanyTrackerDashboardData["summary"]): string {
   const base = `${formatCurrency(summary.grossMarginRevenue, summary.currency)} revenue / ${formatCurrency(
     summary.costOfGoodsSold,
@@ -123,19 +162,30 @@ function grossMarginDetail(summary: CompanyTrackerDashboardData["summary"]): str
 function demoBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
   return `${formatNumber(summary.scheduledDemos)} scheduled / ${formatNumber(
     summary.requestedDemos,
-  )} requested`;
+  )} requested / ${formatNumber(summary.hubspotDemoDeals)} HubSpot deals / ${formatNumber(
+    summary.hubspotDemoMeetings,
+  )} HubSpot meetings / ${formatNumber(summary.calendarDemoEvents)} calendar / ${formatNumber(
+    summary.webflowDemoRequests,
+  )} Webflow`;
 }
 
 function trafficBreakdownDetail(summary: CompanyTrackerDashboardData["summary"]): string {
   return `${formatNumber(summary.websiteSessions)} sessions / ${formatNumber(
     summary.organicTraffic,
-  )} organic`;
+  )} organic / ${formatNumber(summary.posthogPageviews)} PostHog`;
+}
+
+function conversionRateDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.conversions)} conversions / ${formatNumber(summary.websiteSessions)} sessions`;
 }
 
 function customerActivityDetail(summary: CompanyTrackerDashboardData["summary"]): string {
-  return `${formatNumber(summary.supportInteractions)} support / ${formatNumber(
+  const base = `${formatNumber(summary.supportInteractions)} support / ${formatNumber(
     summary.productUsageRecords,
   )} usage / ${formatNumber(summary.collaborationSignals)} collaboration`;
+  return summary.customerActivityActiveAccounts === null
+    ? base
+    : `${base} / ${formatNumber(summary.customerActivityActiveAccounts)} active accounts`;
 }
 
 function customerHealthDetail(summary: CompanyTrackerDashboardData["summary"]): string {
@@ -144,8 +194,34 @@ function customerHealthDetail(summary: CompanyTrackerDashboardData["summary"]): 
   )} open support`;
 }
 
+function churnDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.churnedCustomers)} churned / ${formatNumber(
+    summary.retentionCustomerBase,
+  )} base`;
+}
+
+function retentionDetail(summary: CompanyTrackerDashboardData["summary"]): string {
+  return `${formatNumber(summary.retainedCustomers)} retained / ${formatNumber(
+    summary.retentionCustomerBase,
+  )} base`;
+}
+
 function retentionRiskDetail(summary: CompanyTrackerDashboardData["summary"]): string {
-  return `${formatNumber(summary.retentionRiskAccounts)} at risk from retention model`;
+  const drivers = [
+    numberValue(summary.retentionRiskEscalations) !== null
+      ? `${formatNumber(summary.retentionRiskEscalations)} escalations`
+      : null,
+    numberValue(summary.retentionRiskBillingRiskAccounts) !== null
+      ? `${formatNumber(summary.retentionRiskBillingRiskAccounts)} billing risk`
+      : null,
+    numberValue(summary.retentionRiskLowUsageAccounts) !== null
+      ? `${formatNumber(summary.retentionRiskLowUsageAccounts)} low usage`
+      : null,
+  ].filter((detail): detail is string => detail !== null);
+
+  return drivers.length > 0
+    ? `${formatNumber(summary.retentionRiskAccounts)} at risk / ${drivers.join(" / ")}`
+    : `${formatNumber(summary.retentionRiskAccounts)} at risk from retention model`;
 }
 
 function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
@@ -256,7 +332,7 @@ function lineageSourcesLabel(value: unknown): string | null {
   return sources.length > 0 ? sources.join(" · ") : null;
 }
 
-function metricEvidenceLabel(metric: CompanyTrackerMetric): string | null {
+function metricEvidenceLabel(metric: { sourceLineageCount?: unknown; latestSourceCapturedAt?: string | null }): string | null {
   const parts: string[] = [];
   const lineageCount = numberValue(metric.sourceLineageCount);
   if (lineageCount !== null && lineageCount > 0) {
@@ -330,6 +406,8 @@ function KpiCard({
 }
 
 function NorthStarDriverRow({ driver }: { driver: CompanyNorthStarDriver }) {
+  const lineageSources = lineageSourcesLabel(driver.sourceLineageKeys);
+  const evidence = metricEvidenceLabel(driver);
   return (
     <article className="rounded-lg border border-border bg-background/60 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -342,6 +420,12 @@ function NorthStarDriverRow({ driver }: { driver: CompanyNorthStarDriver }) {
       <p className="mt-2 text-lg font-semibold text-foreground">
         {formatNumber(driver.value, driver.unit)}
       </p>
+      {lineageSources ? (
+        <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">Sources {lineageSources}</p>
+      ) : null}
+      {evidence ? (
+        <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{evidence}</p>
+      ) : null}
     </article>
   );
 }
@@ -750,13 +834,13 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="ARR"
             value={formatCurrency(data.summary.arr, data.summary.currency)}
-            detail="revenue.mrr.value.arr, or MRR x 12 when ARR is absent."
+            detail={arrDetail(data.summary)}
             icon={TrendingUp}
           />
           <KpiCard
             label="MRR"
             value={formatCurrency(data.summary.mrr, data.summary.currency)}
-            detail="Normalized monthly recurring revenue."
+            detail={mrrDetail(data.summary)}
             icon={CircleDollarSign}
           />
           <KpiCard
@@ -777,19 +861,19 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="Revenue"
             value={formatCurrency(data.summary.totalRevenue, data.summary.currency)}
-            detail="revenue.total_revenue.value.amount"
+            detail={revenueMixDetail(data.summary)}
             icon={CircleDollarSign}
           />
           <KpiCard
             label="Subscription Revenue"
             value={formatCurrency(data.summary.subscriptionRevenue, data.summary.currency)}
-            detail="revenue.subscription_revenue.value.amount"
+            detail={revenueShareDetail(data.summary.subscriptionRevenue, data.summary.totalRevenue)}
             icon={CircleDollarSign}
           />
           <KpiCard
             label="Services Revenue"
             value={formatCurrency(data.summary.servicesRevenue, data.summary.currency)}
-            detail="revenue.services_revenue.value.amount"
+            detail={revenueShareDetail(data.summary.servicesRevenue, data.summary.totalRevenue)}
             icon={ReceiptText}
           />
           <KpiCard
@@ -810,13 +894,13 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="Cash Balance"
             value={formatCurrency(data.summary.cashBalance, data.summary.currency)}
-            detail="finance.cash_balance.value.amount"
+            detail={cashBalanceDetail(data.summary)}
             icon={CircleDollarSign}
           />
           <KpiCard
             label="Expenses"
             value={formatCurrency(data.summary.expenses, data.summary.currency)}
-            detail="finance.expenses.value.amount"
+            detail={expensesDetail(data.summary)}
             icon={ReceiptText}
           />
           <KpiCard
@@ -849,7 +933,7 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="Conversion Rate"
             value={formatNumber(data.summary.conversionRate, "percent")}
-            detail="marketing.conversion_rate.value.rate"
+            detail={conversionRateDetail(data.summary)}
             icon={Percent}
           />
           <KpiCard
@@ -885,13 +969,13 @@ export function CompanyTrackerDashboard({ data }: { data: CompanyTrackerDashboar
           <KpiCard
             label="Churn Rate"
             value={formatNumber(data.summary.churnRate, "percent")}
-            detail="customer_success.churn_rate.value.rate"
+            detail={churnDetail(data.summary)}
             icon={AlertTriangle}
           />
           <KpiCard
             label="Retention Rate"
             value={formatNumber(data.summary.retentionRate, "percent")}
-            detail="customer_success.retention_rate.value.rate"
+            detail={retentionDetail(data.summary)}
             icon={ShieldCheck}
           />
           <KpiCard

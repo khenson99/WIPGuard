@@ -1306,6 +1306,31 @@ export async function fetchHubSpotData(
     }
   }
 
+  let contactRecords: HubSpotContactRecord[] | undefined;
+  let contactRecordsAvailable = false;
+  let contactRecordsError: string | null = null;
+  let contactRecordsTruncated = false;
+  let contactRecordsPagesFetched = 0;
+  if (useActivityInRange && rangeFrom && rangeTo) {
+    try {
+      const contactResult = await fetchHubSpotContactRecords({
+        baseUrl,
+        headers,
+        from: rangeFrom,
+        to: rangeTo,
+        ownerNameById,
+      });
+      contactRecords = contactResult.contacts;
+      contactRecordsAvailable = true;
+      contactRecordsTruncated = contactResult.truncated;
+      contactRecordsPagesFetched = contactResult.pagesFetched;
+    } catch (error) {
+      contactRecords = undefined;
+      contactRecordsAvailable = false;
+      contactRecordsError = error instanceof Error ? error.message : "HubSpot contacts request failed";
+    }
+  }
+
   const resolveOwnerName = (ownerId: string | null | undefined): string => {
     if (!ownerId) return "Unassigned";
     const trimmed = String(ownerId).trim();
@@ -1763,6 +1788,11 @@ export async function fetchHubSpotData(
     ticketsFetched: tickets?.length ?? 0,
     ticketsTruncated: ticketsResult.truncated,
     ticketsPagesFetched: ticketsResult.pagesFetched,
+    contactRecordsAvailable,
+    contactRecordsError,
+    contactRecordsFetched: contactRecords?.length ?? 0,
+    contactRecordsTruncated,
+    contactRecordsPagesFetched,
   };
 
   return {
@@ -1792,6 +1822,7 @@ export async function fetchHubSpotData(
     meetings,
     companies,
     tickets,
+    ...(contactRecords ? { contactRecords } : {}),
     contacts: {
       totalContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
       recentContacts: Math.max(0, recentContacts - suspiciousLeadExclusions),
@@ -1873,6 +1904,121 @@ type HubSpotContactsSearchResponse = {
   results?: Array<{ id?: string | number; properties?: Record<string, string> }>;
   paging?: { next?: { after?: string } };
 };
+
+async function fetchHubSpotContactRecords(input: {
+  baseUrl: string;
+  headers: Record<string, string>;
+  from: Date;
+  to: Date;
+  ownerNameById?: Map<string, string>;
+  maxPages?: number;
+}): Promise<{
+  contacts: HubSpotContactRecord[];
+  pagesFetched: number;
+  truncated: boolean;
+}> {
+  const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES);
+  const defaultMaxPages = Number.isFinite(envMaxPages) && envMaxPages > 0 ? envMaxPages : 1000;
+  const maxPages = Math.max(1, Math.min(input.maxPages ?? defaultMaxPages, 1000));
+  const ownerNameById = input.ownerNameById ?? new Map<string, string>();
+  const fromMs = input.from.getTime();
+  const toMs = input.to.getTime();
+  const contacts: HubSpotContactRecord[] = [];
+  let pagesFetched = 0;
+  let after: string | undefined;
+  let truncated = false;
+
+  for (let page = 0; page < maxPages; page++) {
+    const body = {
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
+            { propertyName: "createdate", operator: "LTE", value: String(toMs) },
+          ],
+        },
+      ],
+      sorts: ["createdate"],
+      properties: [
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "hs_analytics_source_data_1",
+        "hs_analytics_source_data_2",
+        "hs_analytics_first_timestamp",
+        "hs_analytics_last_timestamp",
+        "hs_analytics_first_url",
+        "hs_analytics_last_url",
+        "hs_analytics_num_visits",
+        "hs_analytics_num_page_views",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+      ],
+      limit: 100,
+      after,
+    };
+
+    const res = await fetch(`${input.baseUrl}/crm/v3/objects/contacts/search`, {
+      method: "POST",
+      headers: input.headers,
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "unknown");
+      throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
+    }
+
+    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
+    const results = data.results ?? [];
+    pagesFetched += 1;
+
+    for (const contact of results) {
+      const props = contact.properties ?? {};
+      const contactId = String(contact.id ?? "").trim();
+      if (!contactId) continue;
+      const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
+      const email = props.email ? String(props.email) : null;
+      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
+
+      contacts.push({
+        contactId,
+        email,
+        createdAt: hubSpotTimestampToIso(props.createdate),
+        ownerId,
+        repName: ownerId ? ownerNameById.get(ownerId) || "Unknown" : "Unassigned",
+        rawSource,
+        sourceData1: props.hs_analytics_source_data_1 || null,
+        sourceData2: props.hs_analytics_source_data_2 || null,
+        firstSeenAt: props.hs_analytics_first_timestamp
+          ? hubSpotTimestampToIso(props.hs_analytics_first_timestamp)
+          : null,
+        lastSeenAt: props.hs_analytics_last_timestamp
+          ? hubSpotTimestampToIso(props.hs_analytics_last_timestamp)
+          : null,
+        firstUrl: props.hs_analytics_first_url || null,
+        lastUrl: props.hs_analytics_last_url || null,
+        numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
+        numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
+        utmSource: props.utm_source || null,
+        utmMedium: props.utm_medium || null,
+        utmCampaign: props.utm_campaign || null,
+      });
+    }
+
+    after = data.paging?.next?.after;
+    if (!after || results.length === 0) break;
+    if (page === maxPages - 1) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return { contacts, pagesFetched, truncated };
+}
 
 async function fetchDealContactAnalytics(
   baseUrl: string,
@@ -1998,115 +2144,16 @@ export async function fetchHubSpotContacts(
     "Content-Type": "application/json",
   };
 
-  const envMaxPages = Number(process.env.HUBSPOT_CONTACTS_MAX_PAGES || "");
-  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? (Number.isFinite(envMaxPages) ? envMaxPages : 1000), 1000));
-
   const { owners } = await fetchHubSpotOwners({ baseUrl, headers });
-  const ownerMap = Object.fromEntries(owners.map((owner) => [owner.id, owner.name]));
-
-  const fromMs = from.getTime();
-  const toMs = to.getTime();
-
-  const out: HubSpotContactRecord[] = [];
-  let after: string | undefined;
-
-  for (let page = 0; page < maxPages; page++) {
-    const url = `${baseUrl}/crm/v3/objects/contacts/search`;
-
-    const body = {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
-            { propertyName: "createdate", operator: "LTE", value: String(toMs) },
-          ],
-        },
-      ],
-      sorts: ["createdate"],
-      properties: [
-        "email",
-        "createdate",
-        "hubspot_owner_id",
-        "hs_analytics_source",
-        "hs_analytics_num_visits",
-        "hs_analytics_num_page_views",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-      ],
-      limit: 100,
-      after,
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "unknown");
-      throw new Error(`HubSpot contacts API error ${res.status}: ${text}`);
-    }
-
-    const data = await safeJson<HubSpotContactsSearchResponse>(res, "hubspot contacts");
-    const results = data.results || [];
-
-    for (const contact of results) {
-      const props = contact.properties || {};
-      const ownerId = props.hubspot_owner_id ? String(props.hubspot_owner_id) : null;
-      const email = props.email ? String(props.email) : null;
-      const rawSource = props.hs_analytics_source ? String(props.hs_analytics_source) : null;
-      const syntheticDeal: HubSpotDealRecord = {
-        dealId: String(contact.id ?? ""),
-        dealName: email?.split("@")[0] || "Untitled contact",
-        stageId: "contact",
-        stageLabel: "Lead",
-        amount: 0,
-        source: rawSource || "Unknown",
-        ownerId,
-        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        updatedAt: null,
-        createdAt: hubSpotTimestampToIso(props.createdate),
-        closedAt: null,
-        stripeCustomerId: null,
-        pipelineId: null,
-        contactIds: [String(contact.id ?? "")].filter(Boolean),
-        primaryContactId: String(contact.id ?? "") || null,
-        primaryContactEmail: email,
-        primaryContactAnalytics: {
-          createdAt: hubSpotTimestampToIso(props.createdate),
-          source: rawSource,
-          sourceData1: null,
-          sourceData2: null,
-          firstSeenAt: null,
-          lastSeenAt: null,
-          firstUrl: null,
-          lastUrl: null,
-          numVisits: props.hs_analytics_num_visits ? Number(props.hs_analytics_num_visits) : null,
-          numPageViews: props.hs_analytics_num_page_views ? Number(props.hs_analytics_num_page_views) : null,
-          utmSource: props.utm_source || null,
-          utmMedium: props.utm_medium || null,
-          utmCampaign: props.utm_campaign || null,
-        },
-      };
-      if (isSuspiciousHubSpotLead(syntheticDeal)) continue;
-
-      out.push({
-        contactId: String(contact.id ?? ""),
-        createdAt: hubSpotTimestampToIso(props.createdate),
-        ownerId,
-        repName: ownerId ? ownerMap[ownerId] || "Unknown" : "Unassigned",
-        rawSource,
-      });
-    }
-
-    after = data.paging?.next?.after;
-    if (!after || results.length === 0) break;
-  }
-
-  return out;
+  const result = await fetchHubSpotContactRecords({
+    baseUrl,
+    headers,
+    from,
+    to,
+    ownerNameById: new Map(owners.map((owner) => [owner.id, owner.name])),
+    maxPages: opts?.maxPages,
+  });
+  return result.contacts;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2266,6 +2313,24 @@ function stripeSubscriptionHubspotCompanyIds(subscription: StripeSub): string[] 
   }
 
   return ids;
+}
+
+function stripeSubscriptionCustomerIdentity(subscription: StripeSub): string {
+  const customerId = stripeSubscriptionCustomerId(subscription.customer);
+  if (customerId !== "Unknown customer") return `stripe:${customerId.toLowerCase()}`;
+
+  const hubspotCompanyId = stripeSubscriptionHubspotCompanyIds(subscription)[0];
+  if (hubspotCompanyId) return `hubspot:${hubspotCompanyId}`;
+
+  const email = stripeSubscriptionCustomerEmail(subscription.customer);
+  if (email) return `email:${email}`;
+
+  const emailDomain = normalizeEmailDomain(email);
+  if (emailDomain) return `domain:${emailDomain}`;
+
+  return typeof subscription.id === "string" && subscription.id.trim()
+    ? `subscription:${subscription.id.trim().toLowerCase()}`
+    : "subscription:unknown";
 }
 
 function normalizeEmailDomain(email: string | null): string | null {
@@ -2978,6 +3043,7 @@ export async function fetchStripeData(
       canceledAt: new Date((subscription.canceled_at || 0) * 1000).toISOString(),
       amount: stripeSubscriptionMonthlyAmount(subscription),
     }));
+  const activeCustomerCount = new Set(activeSubs.map(stripeSubscriptionCustomerIdentity)).size;
 
   const truncatedResources = [
     ...(activeSubResult.truncated ? ["activeSubscriptions"] : []),
@@ -3032,7 +3098,7 @@ export async function fetchStripeData(
       totalRevenue30d: revInRange,
       totalRevenuePrev30d: revPrev,
       revenueGrowth,
-      avgRevenuePerCustomer: activeSubs.length > 0 ? mrr / activeSubs.length : 0,
+      avgRevenuePerCustomer: activeCustomerCount > 0 ? mrr / activeCustomerCount : 0,
     },
     subscriptions: {
       active: activeSubs.length,

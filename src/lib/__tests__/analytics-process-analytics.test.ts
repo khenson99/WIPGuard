@@ -551,8 +551,8 @@ describe("buildSalesPerformancePack", () => {
     ];
 
     const contacts: HubSpotContactRecord[] = [
-      { contactId: "c1", createdAt: "2026-02-01T00:00:00.000Z", ownerId: "o1", repName: "Rep A", rawSource: null },
-      { contactId: "c2", createdAt: "2026-02-02T00:00:00.000Z", ownerId: "o1", repName: "Rep A", rawSource: null },
+      { contactId: "c1", email: null, createdAt: "2026-02-01T00:00:00.000Z", ownerId: "o1", repName: "Rep A", rawSource: null },
+      { contactId: "c2", email: null, createdAt: "2026-02-02T00:00:00.000Z", ownerId: "o1", repName: "Rep A", rawSource: null },
     ];
 
     const pack = buildSalesPerformancePack({

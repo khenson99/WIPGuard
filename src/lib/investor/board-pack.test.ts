@@ -132,14 +132,18 @@ describe("loadInvestorBoardPack", () => {
         currentMrr: 10000,
         netNewArr: 12000,
         summary:
-          "Approved ARR/MRR growth interpreted through runway, burn, pipeline, activation, retention risk, and trust labels.",
-        drivers: [
+          "Approved ARR/MRR growth interpreted through runway, burn, margin, revenue mix, acquisition, activation, retention, and trust labels.",
+        drivers: expect.arrayContaining([
           { id: "runway", label: "Runway", value: null, unit: "months", status: "missing" },
+          { id: "cash_balance", label: "Cash Balance", value: null, unit: "currency", status: "missing" },
           { id: "net_burn", label: "Net Burn", value: null, unit: "currency", status: "missing" },
+          { id: "gross_margin", label: "Gross Margin", value: null, unit: "percent", status: "missing" },
+          { id: "subscription_revenue", label: "Subscription Revenue", value: null, unit: "currency", status: "missing" },
           { id: "pipeline", label: "Pipeline", value: null, unit: "currency", status: "missing" },
+          { id: "conversion_rate", label: "Conversion Rate", value: null, unit: "percent", status: "missing" },
           { id: "activation", label: "Activation", value: null, unit: "percent", status: "missing" },
           { id: "retention_risk", label: "Retention Risk", value: null, unit: "score", status: "missing" },
-        ],
+        ]),
       },
       metrics: [
         {
@@ -282,7 +286,14 @@ describe("loadInvestorBoardPack", () => {
       organizationId: "org-1",
     });
 
-    expect(payload.pack?.healthyArrGrowth.drivers).toEqual([
+    const driverSummaries = payload.pack?.healthyArrGrowth.drivers.map(({ id, label, value, unit, status }) => ({
+      id,
+      label,
+      value,
+      unit,
+      status,
+    }));
+    expect(driverSummaries).toEqual([
       { id: "runway", label: "Runway", value: 14.2, unit: "months", status: "strong" },
       { id: "cash_balance", label: "Cash Balance", value: 800000, unit: "currency", status: "strong" },
       { id: "net_burn", label: "Net Burn", value: 57000, unit: "currency", status: "strong" },
@@ -311,5 +322,172 @@ describe("loadInvestorBoardPack", () => {
       { id: "retention_risk", label: "Retention Risk", value: 11, unit: "score", status: "strong" },
     ]);
     expect(payload.pack?.healthyArrGrowth.summary).toContain("margin, revenue mix, acquisition, activation, retention");
+  });
+
+  it("normalizes object-valued canonical metric payloads before building investor ARR drivers", async () => {
+    const { loadInvestorBoardPack } = await import("@/lib/investor/board-pack");
+    const metric = (key: string, label: string, value: Record<string, unknown>, unit: string) => ({
+      key,
+      label,
+      value,
+      priorValue: null,
+      delta: null,
+      unit,
+      trust: "fresh",
+      asOf: "2026-05-31T00:00:00.000Z",
+      warnings: [],
+    });
+
+    prismaMock.ceoReportRun.findFirst.mockResolvedValue({
+      id: "run-object-valued-drivers",
+      packSlug: "investor-update",
+      packName: "Investor Update",
+      generatedAt: new Date("2026-06-01T12:00:00.000Z"),
+      deterministicNotes: [],
+      markdown: "# Investor Update",
+      csv: "Metric,Value",
+      slideJson: {
+        title: "Investor Update",
+        sections: [
+          {
+            title: "Operating Metrics",
+            metrics: [
+              metric("revenue.mrr", "MRR", { amount: 10000 }, "currency"),
+              metric("revenue.arr", "ARR", { amount: 120000 }, "currency"),
+              metric("finance.gross_margin", "Gross Margin", { rate: 71.4 }, "percent"),
+              metric("revenue.active_subscriptions", "Active Subscriptions", { count: 21 }, "count"),
+              metric("sales.qualified_pipeline", "Pipeline", { amount: 450000 }, "currency"),
+              metric("sales.demos", "Demos", { count: 27 }, "count"),
+              metric("marketing.conversion_rate", "Conversion Rate", { rate: 3.8 }, "percent"),
+              metric("marketing.pipeline_efficiency", "Pipeline Efficiency", { ratio: 4.2 }, "ratio"),
+              metric("product.activation_rate", "Activation Rate", { rate: 62 }, "percent"),
+              metric("customer_success.customer_health", "Customer Health", { score: 84 }, "score"),
+              metric("customer_success.customer_activity", "Customer Activity", { count: 133 }, "count"),
+              metric("customer_success.retention_risk", "Retention Risk", { score: 11 }, "score"),
+            ],
+          },
+        ],
+        notes: [],
+      },
+      boardFinalAt: new Date("2026-06-01T13:00:00.000Z"),
+      boardFinalOverrideReason: null,
+    });
+
+    const payload = await loadInvestorBoardPack({
+      userId: "investor-1",
+      organizationId: "org-1",
+    });
+
+    expect(payload.pack?.healthyArrGrowth).toMatchObject({
+      currentArr: 120000,
+      currentMrr: 10000,
+    });
+    expect(payload.pack?.healthyArrGrowth.drivers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "gross_margin", value: 71.4, status: "strong" }),
+        expect.objectContaining({ id: "active_subscriptions", value: 21, status: "strong" }),
+        expect.objectContaining({ id: "pipeline", value: 450000, status: "strong" }),
+        expect.objectContaining({ id: "demos", value: 27, status: "strong" }),
+        expect.objectContaining({ id: "conversion_rate", value: 3.8, status: "strong" }),
+        expect.objectContaining({ id: "pipeline_efficiency", value: 4.2, status: "strong" }),
+        expect.objectContaining({ id: "activation", value: 62, status: "strong" }),
+        expect.objectContaining({ id: "customer_health", value: 84, status: "strong" }),
+        expect.objectContaining({ id: "customer_activity", value: 133, status: "strong" }),
+        expect.objectContaining({ id: "retention_risk", value: 11, status: "strong" }),
+      ]),
+    );
+    expect(payload.pack?.slideJson).toMatchObject({
+      sections: [
+        {
+          metrics: expect.arrayContaining([
+            expect.objectContaining({ key: "finance.gross_margin", value: 71.4 }),
+            expect.objectContaining({ key: "sales.qualified_pipeline", value: 450000 }),
+            expect.objectContaining({ key: "customer_success.retention_risk", value: 11 }),
+          ]),
+        },
+      ],
+    });
+  });
+
+  it("surfaces sanitized source evidence on Healthy ARR growth drivers", async () => {
+    const { loadInvestorBoardPack } = await import("@/lib/investor/board-pack");
+    prismaMock.ceoReportRun.findFirst.mockResolvedValue({
+      id: "run-driver-evidence",
+      packSlug: "investor-update",
+      packName: "Investor Update",
+      generatedAt: new Date("2026-06-01T12:00:00.000Z"),
+      deterministicNotes: [],
+      markdown: "# Investor Update",
+      csv: "Metric,Value",
+      slideJson: {
+        title: "Investor Update",
+        sections: [
+          {
+            title: "Operating Metrics",
+            metrics: [
+              {
+                key: "revenue.mrr",
+                label: "MRR",
+                value: 10000,
+                priorValue: null,
+                delta: null,
+                unit: "currency",
+                trust: "fresh",
+                asOf: "2026-05-31T00:00:00.000Z",
+                warnings: [],
+              },
+              {
+                key: "finance.net_burn",
+                label: "Net Burn",
+                value: 57000,
+                priorValue: null,
+                delta: null,
+                unit: "currency",
+                trust: "stale",
+                asOf: "2026-05-31T00:00:00.000Z",
+                warnings: ["Net burn includes stale Mercury transaction evidence."],
+                sourceLineage: [
+                  {
+                    sourceKey: "mercury",
+                    rawRecordId: "raw_mercury_transaction_internal",
+                    capturedAt: "2026-06-01T07:00:00.000Z",
+                  },
+                  {
+                    sourceKey: "stripe",
+                    rawRecordId: "raw_stripe_balance_transaction_internal",
+                    capturedAt: "2026-06-01T09:00:00.000Z",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        notes: [],
+      },
+      boardFinalAt: new Date("2026-06-01T13:00:00.000Z"),
+      boardFinalOverrideReason: null,
+    });
+
+    const payload = await loadInvestorBoardPack({
+      userId: "investor-1",
+      organizationId: "org-1",
+    });
+
+    expect(payload.pack?.healthyArrGrowth.drivers).toContainEqual(
+      expect.objectContaining({
+        id: "net_burn",
+        label: "Net Burn",
+        value: 57000,
+        unit: "currency",
+        status: "watch",
+        trust: "stale",
+        warnings: ["Net burn includes stale Mercury transaction evidence."],
+        sourceLineageKeys: ["mercury", "stripe"],
+        sourceLineageCount: 2,
+        latestSourceCapturedAt: "2026-06-01T09:00:00.000Z",
+      }),
+    );
+    expect(JSON.stringify(payload.pack?.healthyArrGrowth.drivers)).not.toContain("raw_mercury_transaction_internal");
+    expect(JSON.stringify(payload.pack?.healthyArrGrowth.drivers)).not.toContain("raw_stripe_balance_transaction_internal");
   });
 });

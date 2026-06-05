@@ -42,7 +42,7 @@ function sourceLineageLabel(value: string[] | undefined): string | null {
   return sources.length > 0 ? sources.join(" · ") : null;
 }
 
-function sourceLineageEvidenceLabel(metric: InvestorBoardMetric): string | null {
+function sourceLineageEvidenceLabel(metric: Pick<InvestorBoardMetric, "sourceLineageCount" | "latestSourceCapturedAt">): string | null {
   const parts: string[] = [];
   const count = metric.sourceLineageCount;
   if (typeof count === "number" && Number.isFinite(count) && count > 0) {
@@ -68,7 +68,20 @@ function TrustBadge({ status }: { status: string | null }) {
   );
 }
 
+function WarningList({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <ul className="mt-3 space-y-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
+      {warnings.map((warning) => (
+        <li key={warning}>{warning}</li>
+      ))}
+    </ul>
+  );
+}
+
 function DriverCard({ driver }: { driver: InvestorHealthyArrGrowthDriver }) {
+  const sources = sourceLineageLabel(driver.sourceLineageKeys);
+  const evidence = sourceLineageEvidenceLabel(driver);
   return (
     <article className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -78,6 +91,9 @@ function DriverCard({ driver }: { driver: InvestorHealthyArrGrowthDriver }) {
       <p className="mt-3 text-xl font-semibold text-foreground">
         {formatMetricValue(driver.value, driver.unit)}
       </p>
+      {sources ? <p className="mt-2 text-xs text-muted-foreground">Sources {sources}</p> : null}
+      {evidence ? <p className="mt-2 text-xs text-muted-foreground">{evidence}</p> : null}
+      <WarningList warnings={driver.warnings ?? []} />
     </article>
   );
 }
@@ -103,6 +119,7 @@ function MetricCard({ metric }: { metric: InvestorBoardMetric }) {
       </p>
       {sources ? <p className="mt-2 text-xs text-muted-foreground">Sources {sources}</p> : null}
       {evidence ? <p className="mt-2 text-xs text-muted-foreground">{evidence}</p> : null}
+      <WarningList warnings={metric.warnings} />
     </article>
   );
 }

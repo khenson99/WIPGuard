@@ -140,6 +140,7 @@ export interface CompanyTrackerSummary {
   hubspotOnlyCustomers: number | null;
   websiteTraffic: number | null;
   websiteSessions: number | null;
+  posthogPageviews: number | null;
   organicTraffic: number | null;
   searchClicks: number | null;
   searchImpressions: number | null;
@@ -147,6 +148,7 @@ export interface CompanyTrackerSummary {
   conversions: number | null;
   webflowFormSubmissions: number | null;
   hubspotLeadConversions: number | null;
+  posthogConversions: number | null;
   identifiedVisitors: number | null;
   pipelineEfficiency: number | null;
   acquisitionSpend: number | null;
@@ -160,10 +162,17 @@ export interface CompanyTrackerSummary {
   supportInteractions: number | null;
   productUsageRecords: number | null;
   collaborationSignals: number | null;
+  customerActivityActiveAccounts: number | null;
   churnRate: number | null;
   retentionRate: number | null;
+  churnedCustomers: number | null;
+  retainedCustomers: number | null;
+  retentionCustomerBase: number | null;
   retentionRiskScore: number | null;
   retentionRiskAccounts: number | null;
+  retentionRiskEscalations: number | null;
+  retentionRiskBillingRiskAccounts: number | null;
+  retentionRiskLowUsageAccounts: number | null;
   currency: string;
 }
 
@@ -208,6 +217,9 @@ export interface CompanyNorthStarDriver {
   unit: string;
   status: HealthBandStatus;
   detail: string;
+  sourceLineageCount?: number;
+  sourceLineageKeys?: string[];
+  latestSourceCapturedAt?: string;
 }
 
 export interface CompanyNorthStar {
@@ -1954,6 +1966,9 @@ function buildSummary(
     websiteSessions:
       countFromFields(websiteTraffic, "websiteSessions", "website_sessions", "sessions") ??
       null,
+    posthogPageviews:
+      countFromFields(websiteTraffic, "posthogPageviews", "posthog_pageviews") ??
+      null,
     organicTraffic:
       countFromFields(websiteTraffic, "organicTraffic", "organic_traffic") ??
       null,
@@ -1986,6 +2001,9 @@ function buildSummary(
         "hubspotConversions",
         "hubspot_conversions",
       ) ??
+      null,
+    posthogConversions:
+      countFromFields(conversionRate, "posthogConversions", "posthog_conversions") ??
       null,
     identifiedVisitors:
       countFromFields(conversionRate, "identifiedVisitors", "identified_visitors") ??
@@ -2026,17 +2044,56 @@ function buildSummary(
     collaborationSignals:
       countFromFields(customerActivity, "collaborationSignals", "collaboration_signals") ??
       null,
+    customerActivityActiveAccounts:
+      countFromFields(customerActivity, "activeAccounts", "active_accounts") ??
+      null,
     churnRate:
       numberFromFields(churnRate, "rate", "churnRate", "churn_rate") ??
       null,
     retentionRate:
       numberFromFields(retentionRate, "rate", "retentionRate", "retention_rate") ??
       null,
+    churnedCustomers:
+      countFromFields(churnRate, "churnedCustomers", "churned_customers") ??
+      countFromFields(retentionRate, "churnedCustomers", "churned_customers") ??
+      null,
+    retainedCustomers:
+      countFromFields(retentionRate, "retainedCustomers", "retained_customers") ??
+      countFromFields(churnRate, "retainedCustomers", "retained_customers") ??
+      null,
+    retentionCustomerBase:
+      countFromFields(retentionRate, "customerBase", "customer_base") ??
+      countFromFields(churnRate, "customerBase", "customer_base") ??
+      null,
     retentionRiskScore:
       numberFromFields(retentionRisk, "score", "riskScore", "risk_score") ??
       null,
     retentionRiskAccounts:
       countFromFields(retentionRisk, "atRiskAccounts", "at_risk_accounts") ??
+      null,
+    retentionRiskEscalations:
+      countFromFields(retentionRisk, "escalations", "escalationCount", "escalation_count") ??
+      countFromFields(customerHealth, "escalations", "escalationCount", "escalation_count") ??
+      null,
+    retentionRiskBillingRiskAccounts:
+      countFromFields(
+        retentionRisk,
+        "accountsWithBillingRisk",
+        "accounts_with_billing_risk",
+        "billingRiskAccounts",
+        "billing_risk_accounts",
+      ) ??
+      countFromFields(
+        customerHealth,
+        "accountsWithBillingRisk",
+        "accounts_with_billing_risk",
+        "billingRiskAccounts",
+        "billing_risk_accounts",
+      ) ??
+      null,
+    retentionRiskLowUsageAccounts:
+      countFromFields(retentionRisk, "lowUsageAccounts", "low_usage_accounts") ??
+      countFromFields(customerHealth, "lowUsageAccounts", "low_usage_accounts") ??
       null,
     currency: currencyFrom(mrr, arr, totalRevenue, subscriptionRevenue, servicesRevenue, cashBalance, runway, netBurn, expenses, pipeline),
   };
@@ -2329,12 +2386,14 @@ function buildNorthStar(input: {
   summary: CompanyTrackerSummary;
   previousMrr: CanonicalMetricRow | null;
   healthBands: CompanyHealthBand[];
+  metrics: CompanyTrackerMetric[];
 }): CompanyNorthStar {
   const previousArr = numberValue(metricValueView(input.previousMrr?.value).arr);
   const netNewArr =
     input.summary.arr !== null && previousArr !== null
       ? input.summary.arr - previousArr
       : null;
+  const metricsByKey = new Map(input.metrics.map((metric) => [metric.key, metric]));
   const drivers = input.healthBands.map((band) => ({
     id: band.id,
     label: band.label,
@@ -2342,6 +2401,7 @@ function buildNorthStar(input: {
     unit: band.unit,
     status: band.status,
     detail: band.detail,
+    ...northStarDriverEvidence(metricsByKey, band.sourceMetricKeys),
   }));
 
   return {
@@ -2360,6 +2420,43 @@ function buildNorthStar(input: {
       "sales.qualified_pipeline",
     ],
     drivers,
+  };
+}
+
+function northStarDriverEvidence(
+  metricsByKey: Map<string, CompanyTrackerMetric>,
+  sourceMetricKeys: string[],
+): Pick<CompanyNorthStarDriver, "sourceLineageCount" | "sourceLineageKeys" | "latestSourceCapturedAt"> {
+  const sourceKeys: string[] = [];
+  const seenSourceKeys = new Set<string>();
+  let sourceLineageCount = 0;
+  let latestSourceCapturedAt: string | null = null;
+
+  for (const metricKey of sourceMetricKeys) {
+    const metric = metricsByKey.get(metricKey);
+    if (!metric) continue;
+    if (Number.isFinite(metric.sourceLineageCount) && metric.sourceLineageCount > 0) {
+      sourceLineageCount += metric.sourceLineageCount;
+    }
+    for (const sourceKey of metric.sourceLineageKeys ?? []) {
+      const trimmed = sourceKey.trim();
+      if (!trimmed || seenSourceKeys.has(trimmed)) continue;
+      seenSourceKeys.add(trimmed);
+      sourceKeys.push(trimmed);
+    }
+    if (metric.latestSourceCapturedAt) {
+      const timestamp = toDate(metric.latestSourceCapturedAt);
+      const currentLatest = latestSourceCapturedAt ? toDate(latestSourceCapturedAt) : null;
+      if (timestamp && (!currentLatest || timestamp.getTime() > currentLatest.getTime())) {
+        latestSourceCapturedAt = timestamp.toISOString();
+      }
+    }
+  }
+
+  return {
+    ...(sourceLineageCount > 0 ? { sourceLineageCount } : {}),
+    ...(sourceKeys.length > 0 ? { sourceLineageKeys: sourceKeys } : {}),
+    ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
   };
 }
 
@@ -2802,6 +2899,7 @@ export async function buildCompanyTrackerDashboard(input: {
     summary,
     previousMrr,
     healthBands,
+    metrics,
   });
   const benchmarkContext = buildBenchmarkContext({
     summary,

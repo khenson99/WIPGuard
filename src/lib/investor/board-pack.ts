@@ -21,6 +21,11 @@ export interface InvestorHealthyArrGrowthDriver {
   value: number | string | null;
   unit: string | null;
   status: "strong" | "watch" | "missing";
+  trust?: string | null;
+  warnings?: string[];
+  sourceLineageKeys?: string[];
+  sourceLineageCount?: number;
+  latestSourceCapturedAt?: string;
 }
 
 export interface InvestorHealthyArrGrowthSnapshot {
@@ -104,6 +109,103 @@ function asMetricWarnings(value: unknown): string[] {
   return value.filter((warning): warning is string => typeof warning === "string" && warning.trim().length > 0);
 }
 
+function primitiveMetricValue(value: unknown): number | string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value === null) return null;
+  return null;
+}
+
+function metricValueCandidateKeys(key: string | null, unit: string | null): string[] {
+  const keys = new Set<string>();
+  const add = (...values: string[]) => {
+    for (const value of values) keys.add(value);
+  };
+
+  if (unit === "currency") {
+    add("amount", "totalRevenue", "total_revenue", "cashBalance", "cash_balance", "netBurn", "net_burn", "qualifiedPipeline", "qualified_pipeline");
+  }
+  if (unit === "months") add("months", "runwayMonths", "runway_months");
+  if (unit === "count") {
+    add("count", "activeSubscriptions", "active_subscriptions", "activeCustomers", "active_customers", "customers", "demos", "qualifiedDealCount", "qualified_deal_count", "customerActivity", "customer_activity");
+  }
+  if (unit === "percent") {
+    add("rate", "grossMargin", "gross_margin", "conversionRate", "conversion_rate", "activationRate", "activation_rate", "churnRate", "churn_rate", "retentionRate", "retention_rate");
+  }
+  if (unit === "ratio") add("ratio", "pipelineEfficiency", "pipeline_efficiency");
+  if (unit === "score") {
+    add("score", "customerHealth", "customer_health", "retentionRisk", "retention_risk", "riskScore", "risk_score");
+  }
+
+  switch (key) {
+    case "revenue.mrr":
+    case "revenue.arr":
+    case "revenue.total_revenue":
+    case "revenue.subscription_revenue":
+    case "revenue.services_revenue":
+    case "finance.cash_balance":
+    case "finance.net_burn":
+    case "finance.expenses":
+    case "sales.qualified_pipeline":
+      add("amount");
+      break;
+    case "finance.cash_runway_months":
+      add("months");
+      break;
+    case "finance.gross_margin":
+    case "marketing.conversion_rate":
+    case "product.activation_rate":
+    case "customer_success.churn_rate":
+    case "customer_success.retention_rate":
+      add("rate");
+      break;
+    case "marketing.pipeline_efficiency":
+      add("ratio");
+      break;
+    case "customer_success.customer_health":
+    case "customer_success.retention_risk":
+      add("score", "riskScore", "risk_score");
+      break;
+    default:
+      break;
+  }
+
+  add("value");
+  return [...keys];
+}
+
+function metricScalarValue(metric: Record<string, unknown>, field: "value" | "priorValue"): number | string | null {
+  const direct = primitiveMetricValue(metric[field]);
+  if (direct !== null || metric[field] === null) return direct;
+
+  const source = asRecord(metric[field]);
+  const data = asRecord(source.data);
+  const sources = [
+    source,
+    asRecord(source.value),
+    asRecord(source.metricValue),
+    asRecord(source.metric_value),
+    data,
+    asRecord(data.attributes),
+    asRecord(source.properties),
+    asRecord(source.summary),
+    asRecord(source.metrics),
+    asRecord(source.values),
+    asRecord(source.fields),
+  ].filter((candidate) => Object.keys(candidate).length > 0);
+
+  const key = asString(metric.key);
+  const unit = asString(metric.unit);
+  for (const candidateKey of metricValueCandidateKeys(key, unit)) {
+    for (const candidate of sources) {
+      const value = primitiveMetricValue(candidate[candidateKey]);
+      if (value !== null) return value;
+    }
+  }
+
+  return null;
+}
+
 function asMetricSourceLineageKeys(metric: Record<string, unknown>): string[] {
   const keys: string[] = [];
   const seen = new Set<string>();
@@ -182,14 +284,8 @@ function extractInvestorMetrics(slideJson: unknown): InvestorBoardMetric[] {
       metrics.push({
         key,
         label,
-        value:
-          typeof metric.value === "number" || typeof metric.value === "string" || metric.value === null
-            ? metric.value
-            : null,
-        priorValue:
-          typeof metric.priorValue === "number" || typeof metric.priorValue === "string" || metric.priorValue === null
-            ? metric.priorValue
-            : null,
+        value: metricScalarValue(metric, "value"),
+        priorValue: metricScalarValue(metric, "priorValue"),
         delta: asNumber(metric.delta),
         unit: asString(metric.unit),
         trust: asString(metric.trust),
@@ -218,16 +314,8 @@ function sanitizeSlideJson(slideJson: unknown): unknown {
                 return {
                   key,
                   label,
-                  value:
-                    typeof metric.value === "number" || typeof metric.value === "string" || metric.value === null
-                      ? metric.value
-                      : null,
-                  priorValue:
-                    typeof metric.priorValue === "number" ||
-                    typeof metric.priorValue === "string" ||
-                    metric.priorValue === null
-                      ? metric.priorValue
-                      : null,
+                  value: metricScalarValue(metric, "value"),
+                  priorValue: metricScalarValue(metric, "priorValue"),
                   delta: asNumber(metric.delta),
                   unit: asString(metric.unit),
                   trust: asString(metric.trust),
@@ -270,54 +358,92 @@ function statusForMetric(metric: InvestorBoardMetric | null): InvestorHealthyArr
   return metric.trust === "fresh" ? "strong" : "watch";
 }
 
+interface HealthyArrGrowthDriverSpec {
+  id: string;
+  label: string;
+  keys: string[];
+  unit: string;
+}
+
+const HEALTHY_ARR_GROWTH_DRIVER_SPECS: HealthyArrGrowthDriverSpec[] = [
+  { id: "runway", label: "Runway", keys: ["finance.cash_runway_months"], unit: "months" },
+  { id: "cash_balance", label: "Cash Balance", keys: ["finance.cash_balance"], unit: "currency" },
+  { id: "net_burn", label: "Net Burn", keys: ["finance.net_burn"], unit: "currency" },
+  { id: "expenses", label: "Expenses", keys: ["finance.expenses"], unit: "currency" },
+  { id: "gross_margin", label: "Gross Margin", keys: ["finance.gross_margin"], unit: "percent" },
+  {
+    id: "subscription_revenue",
+    label: "Subscription Revenue",
+    keys: ["revenue.subscription_revenue"],
+    unit: "currency",
+  },
+  { id: "services_revenue", label: "Services Revenue", keys: ["revenue.services_revenue"], unit: "currency" },
+  {
+    id: "active_subscriptions",
+    label: "Active Subscriptions",
+    keys: ["revenue.active_subscriptions"],
+    unit: "count",
+  },
+  { id: "customer_count", label: "Customers", keys: ["revenue.customer_count"], unit: "count" },
+  { id: "pipeline", label: "Pipeline", keys: ["sales.qualified_pipeline"], unit: "currency" },
+  { id: "demos", label: "Demos", keys: ["sales.demos"], unit: "count" },
+  { id: "website_traffic", label: "Website Traffic", keys: ["marketing.website_traffic"], unit: "count" },
+  { id: "conversion_rate", label: "Conversion Rate", keys: ["marketing.conversion_rate"], unit: "percent" },
+  {
+    id: "pipeline_efficiency",
+    label: "Pipeline Efficiency",
+    keys: ["marketing.pipeline_efficiency"],
+    unit: "ratio",
+  },
+  { id: "activation", label: "Activation", keys: ["product.activation_rate"], unit: "percent" },
+  {
+    id: "customer_health",
+    label: "Customer Health",
+    keys: ["customer_success.customer_health"],
+    unit: "score",
+  },
+  {
+    id: "customer_activity",
+    label: "Customer Activity",
+    keys: ["customer_success.customer_activity"],
+    unit: "count",
+  },
+  { id: "churn_rate", label: "Churn Rate", keys: ["customer_success.churn_rate"], unit: "percent" },
+  { id: "retention_rate", label: "Retention Rate", keys: ["customer_success.retention_rate"], unit: "percent" },
+  {
+    id: "retention_risk",
+    label: "Retention Risk",
+    keys: ["customer_success.retention_risk"],
+    unit: "score",
+  },
+];
+
+function buildHealthyArrGrowthDriver(
+  metrics: InvestorBoardMetric[],
+  spec: HealthyArrGrowthDriverSpec,
+): InvestorHealthyArrGrowthDriver {
+  const metric = metricByKey(metrics, spec.keys);
+  return {
+    id: spec.id,
+    label: spec.label,
+    value: metric?.value ?? null,
+    unit: metric?.unit ?? spec.unit,
+    status: statusForMetric(metric),
+    ...(metric?.trust ? { trust: metric.trust } : {}),
+    ...(metric?.warnings && metric.warnings.length > 0 ? { warnings: metric.warnings } : {}),
+    ...(metric?.sourceLineageKeys ? { sourceLineageKeys: metric.sourceLineageKeys } : {}),
+    ...(metric?.sourceLineageCount ? { sourceLineageCount: metric.sourceLineageCount } : {}),
+    ...(metric?.latestSourceCapturedAt ? { latestSourceCapturedAt: metric.latestSourceCapturedAt } : {}),
+  };
+}
+
 function buildHealthyArrGrowthSnapshot(metrics: InvestorBoardMetric[]): InvestorHealthyArrGrowthSnapshot {
   const mrr = metricNumber(metrics, ["revenue.mrr", "finance.mrr"]);
   const arr = metricNumber(metrics, ["revenue.arr"]) ?? (mrr === null ? null : mrr * 12);
   const arrMetric = metricByKey(metrics, ["revenue.arr"]);
   const mrrMetric = metricByKey(metrics, ["revenue.mrr", "finance.mrr"]);
-  const runwayMetric = metricByKey(metrics, ["finance.cash_runway_months"]);
-  const burnMetric = metricByKey(metrics, ["finance.net_burn"]);
-  const pipelineMetric = metricByKey(metrics, ["sales.qualified_pipeline"]);
-  const activationMetric = metricByKey(metrics, ["product.activation_rate"]);
-  const retentionRiskMetric = metricByKey(metrics, ["customer_success.retention_risk"]);
   const netNewArr = asNumber(arrMetric?.delta) ?? (asNumber(mrrMetric?.delta) === null ? null : asNumber(mrrMetric?.delta)! * 12);
-  const drivers: InvestorHealthyArrGrowthDriver[] = [
-    {
-      id: "runway",
-      label: "Runway",
-      value: runwayMetric?.value ?? null,
-      unit: runwayMetric?.unit ?? "months",
-      status: statusForMetric(runwayMetric),
-    },
-    {
-      id: "net_burn",
-      label: "Net Burn",
-      value: burnMetric?.value ?? null,
-      unit: burnMetric?.unit ?? "currency",
-      status: statusForMetric(burnMetric),
-    },
-    {
-      id: "pipeline",
-      label: "Pipeline",
-      value: pipelineMetric?.value ?? null,
-      unit: pipelineMetric?.unit ?? "currency",
-      status: statusForMetric(pipelineMetric),
-    },
-    {
-      id: "activation",
-      label: "Activation",
-      value: activationMetric?.value ?? null,
-      unit: activationMetric?.unit ?? "percent",
-      status: statusForMetric(activationMetric),
-    },
-    {
-      id: "retention_risk",
-      label: "Retention Risk",
-      value: retentionRiskMetric?.value ?? null,
-      unit: retentionRiskMetric?.unit ?? "score",
-      status: statusForMetric(retentionRiskMetric),
-    },
-  ];
+  const drivers = HEALTHY_ARR_GROWTH_DRIVER_SPECS.map((spec) => buildHealthyArrGrowthDriver(metrics, spec));
   const status =
     arr === null && mrr === null
       ? "missing"
@@ -332,7 +458,7 @@ function buildHealthyArrGrowthSnapshot(metrics: InvestorBoardMetric[]): Investor
     currentMrr: mrr,
     netNewArr,
     summary:
-      "Approved ARR/MRR growth interpreted through runway, burn, pipeline, activation, retention risk, and trust labels.",
+      "Approved ARR/MRR growth interpreted through runway, burn, margin, revenue mix, acquisition, activation, retention, and trust labels.",
     drivers,
   };
 }

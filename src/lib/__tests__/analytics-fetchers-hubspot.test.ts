@@ -58,6 +58,8 @@ function createHubSpotFetchMock(input: {
   submissionsByFormGuid?: Record<string, unknown[]>;
   submissionPagesByFormGuid?: Record<string, Record<string, unknown>>;
   submissionPageStatusesByFormGuid?: Record<string, Record<string, number>>;
+  contactSearchPages?: Record<string, unknown>;
+  contactSearchStatus?: number;
 }) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const parsed = new URL(url);
@@ -126,6 +128,14 @@ function createHubSpotFetchMock(input: {
 
     if (parsed.pathname === "/crm/v3/objects/contacts" && parsed.searchParams.get("limit") === "1") {
       return jsonResponse({ total: input.totalContacts ?? 0 });
+    }
+
+    if (parsed.pathname === "/crm/v3/objects/contacts/search") {
+      if (input.contactSearchStatus && input.contactSearchStatus >= 400) {
+        return jsonResponse({ error: "contact search unavailable" }, input.contactSearchStatus);
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { after?: string };
+      return jsonResponse(input.contactSearchPages?.[body.after ?? "initial"] ?? { results: [] });
     }
 
     if (parsed.pathname === "/crm/v4/associations/deal/contact/batch/read") {
@@ -730,6 +740,111 @@ describe("analytics hubspot fetcher", () => {
     expect(contactBatchCall?.[1]).toEqual(expect.objectContaining({
       cache: "no-store",
     }));
+  });
+
+  it("loads recent HubSpot contact objects for durable Imladris contact ingestion", async () => {
+    const fetchMock = createHubSpotFetchMock({
+      totalContacts: 12,
+      owners: [{ id: "owner-1", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" }],
+      contactSearchPages: {
+        initial: {
+          results: [
+            {
+              id: "contact-1",
+              properties: {
+                email: "buyer@example.com",
+                createdate: "2026-05-14T12:00:00.000Z",
+                hubspot_owner_id: "owner-1",
+                hs_analytics_source: "PAID_SEARCH",
+                hs_analytics_num_visits: "4",
+                hs_analytics_num_page_views: "9",
+                utm_source: "google",
+                utm_medium: "cpc",
+                utm_campaign: "launch",
+              },
+            },
+          ],
+          paging: { next: { after: "page-2" } },
+        },
+        "page-2": {
+          results: [
+            {
+              id: "contact-2",
+              properties: {
+                email: "founder@example.com",
+                createdate: "2026-05-20T09:30:00.000Z",
+                hs_analytics_source: "ORGANIC_SEARCH",
+              },
+            },
+          ],
+        },
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchHubSpotData("hs-token", {
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-05-31T23:59:59.999Z"),
+    });
+
+    const contactSearchCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/crm/v3/objects/contacts/search"),
+    );
+    expect(contactSearchCalls).toHaveLength(2);
+    expect(contactSearchCalls[0]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      cache: "no-store",
+    }));
+    expect(JSON.parse(String(contactSearchCalls[0]?.[1]?.body ?? "{}"))).toMatchObject({
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "createdate", operator: "GTE", value: String(new Date("2026-05-01T00:00:00.000Z").getTime()) },
+            { propertyName: "createdate", operator: "LTE", value: String(new Date("2026-05-31T23:59:59.999Z").getTime()) },
+          ],
+        },
+      ],
+      properties: expect.arrayContaining([
+        "email",
+        "createdate",
+        "hubspot_owner_id",
+        "hs_analytics_source",
+        "utm_campaign",
+      ]),
+    });
+    expect((data as { contactRecords?: unknown[] }).contactRecords).toEqual([
+      expect.objectContaining({
+        contactId: "contact-1",
+        email: "buyer@example.com",
+        createdAt: "2026-05-14T12:00:00.000Z",
+        ownerId: "owner-1",
+        repName: "Ada Lovelace",
+        rawSource: "PAID_SEARCH",
+        numVisits: 4,
+        numPageViews: 9,
+        utmSource: "google",
+        utmMedium: "cpc",
+        utmCampaign: "launch",
+      }),
+      expect.objectContaining({
+        contactId: "contact-2",
+        email: "founder@example.com",
+        createdAt: "2026-05-20T09:30:00.000Z",
+        ownerId: null,
+        repName: "Unassigned",
+        rawSource: "ORGANIC_SEARCH",
+        numVisits: null,
+        numPageViews: null,
+        utmSource: null,
+        utmMedium: null,
+        utmCampaign: null,
+      }),
+    ]);
+    expect(data._meta.diagnostics).toMatchObject({
+      contactRecordsFetched: 2,
+      contactRecordsAvailable: true,
+      contactRecordsTruncated: false,
+    });
   });
 
   it("excludes suspicious contact-backed HubSpot leads from funnel and churn metrics", async () => {

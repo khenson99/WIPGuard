@@ -927,6 +927,40 @@ describe("Imladris raw record builder", () => {
     expect(contacts).toHaveLength(2);
   });
 
+  it("maps HubSpot contactRecords arrays to contact raw objects", () => {
+    const records = buildImladrisRawRecordsFromPayload({
+      provider: IntegrationProvider.HUBSPOT,
+      snapshotKey: "hubspot",
+      from: "2026-05-01",
+      to: "2026-06-01",
+      capturedAt: new Date("2026-06-01T12:00:00.000Z"),
+      payload: {
+        contactRecords: [
+          {
+            contactId: "contact_from_fetcher",
+            email: "buyer@example.com",
+            createdAt: "2026-05-14T12:00:00.000Z",
+            rawSource: "PAID_SEARCH",
+          },
+        ],
+      },
+    });
+
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        objectType: "contact",
+        externalId: "hubspot:contact:contact_from_fetcher",
+        occurredAt: "2026-05-14T12:00:00.000Z",
+        sourceUpdatedAt: "2026-05-14T12:00:00.000Z",
+        payload: expect.objectContaining({
+          contactId: "contact_from_fetcher",
+          rawSource: "PAID_SEARCH",
+        }),
+      }),
+    ]));
+    expect(records.find((record) => record.objectType === "contact_records")).toBeUndefined();
+  });
+
   it("recognizes Pylon issue aliases for stable raw record external IDs", () => {
     const records = buildImladrisRawRecordsFromPayload({
       provider: IntegrationProvider.PYLON,

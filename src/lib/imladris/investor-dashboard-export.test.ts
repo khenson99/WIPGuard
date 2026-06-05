@@ -161,12 +161,16 @@ describe("buildInvestorDashboardExport", () => {
             score: 82,
             atRiskAccounts: 2,
             openSupportIssues: 4,
+            escalations: 2,
+            accountsWithBillingRisk: 1,
+            lowUsageAccounts: 3,
           }),
           metric("customer_success.customer_activity", {
             count: 43,
             supportInteractions: 7,
             productUsageRecords: 20,
             collaborationSignals: 16,
+            activeAccounts: 31,
           }),
           metric("customer_success.churn_rate", {
             rate: 5,
@@ -182,6 +186,9 @@ describe("buildInvestorDashboardExport", () => {
             score: 18,
             atRiskAccounts: 2,
             openSupportIssues: 4,
+            escalations: 2,
+            accountsWithBillingRisk: 1,
+            lowUsageAccounts: 3,
           }),
         ]),
       },
@@ -319,6 +326,8 @@ describe("buildInvestorDashboardExport", () => {
       conversions: 50,
       webflowFormSubmissions: 37,
       hubspotLeadConversions: 13,
+      posthogPageviews: 0,
+      posthogConversions: 0,
       identifiedVisitors: 22,
       pipelineEfficiency: 76.92,
       acquisitionSpend: 1_300,
@@ -332,10 +341,17 @@ describe("buildInvestorDashboardExport", () => {
       supportInteractions: 7,
       productUsageRecords: 20,
       collaborationSignals: 16,
+      customerActivityActiveAccounts: 31,
       churnRate: 5,
       retentionRate: 95,
+      churnedCustomers: 1,
+      retainedCustomers: 19,
+      retentionCustomerBase: 20,
       retentionRiskScore: 18,
       retentionRiskAccounts: 2,
+      retentionRiskEscalations: 2,
+      retentionRiskBillingRiskAccounts: 1,
+      retentionRiskLowUsageAccounts: 3,
       currency: "USD",
     });
     expect(result.weekly).toEqual([
@@ -1271,6 +1287,219 @@ describe("buildInvestorDashboardExport", () => {
     });
   });
 
+  it("surfaces raw-derived PostHog marketing traffic and conversions when canonical metrics are missing", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_posthog_investor_pageview_1",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:event:pageview-1",
+            occurredAt: new Date("2026-02-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:00:00.000Z"),
+            payload: {
+              eventId: "evt_pageview_1",
+              event: "$pageview",
+              timestamp: "2026-02-14T00:00:00.000Z",
+              properties: { current_url: "https://imladris.example/pricing" },
+            },
+          },
+          {
+            id: "raw_posthog_investor_pageview_1_import",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:import:pageview-1",
+            occurredAt: new Date("2026-02-14T00:01:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:01:00.000Z"),
+            payload: {
+              event_id: "evt_pageview_1",
+              event: "page_view",
+              timestamp: "2026-02-14T00:00:00.000Z",
+              properties: { path: "/pricing" },
+            },
+          },
+          {
+            id: "raw_posthog_investor_pageview_2",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:event:pageview-2",
+            occurredAt: new Date("2026-02-14T00:02:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T00:02:00.000Z"),
+            payload: {
+              eventId: "evt_pageview_2",
+              event: "pageview",
+              timestamp: "2026-02-14T00:02:00.000Z",
+            },
+          },
+          {
+            id: "raw_posthog_investor_demo_booked",
+            provider: "POSTHOG",
+            objectType: "event",
+            externalId: "posthog:event:demo-booked",
+            occurredAt: new Date("2026-02-15T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-15T00:00:00.000Z"),
+            payload: {
+              eventId: "evt_demo_booked",
+              event: "demo_booked",
+              timestamp: "2026-02-15T00:00:00.000Z",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.websiteTraffic).toBe(2);
+    expect(result.summary.websiteSessions).toBe(2);
+    expect(result.summary.posthogPageviews).toBe(2);
+    expect(result.summary.conversionRate).toBe(50);
+    expect(result.summary.conversions).toBe(1);
+    expect(result.summary.posthogConversions).toBe(1);
+    expect(result.metrics.find((entry) => entry.key === "marketing.website_traffic")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 2,
+        websiteSessions: 2,
+        posthogPageviews: 2,
+        organicTraffic: 0,
+        searchClicks: 0,
+        searchImpressions: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          rawRecordId: "raw_posthog_investor_pageview_1_import",
+        }),
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          rawRecordId: "raw_posthog_investor_pageview_2",
+        }),
+      ]),
+    });
+    expect(result.metrics.find((entry) => entry.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 50,
+        conversions: 1,
+        websiteSessions: 2,
+        webflowFormSubmissions: 0,
+        hubspotLeadConversions: 0,
+        posthogConversions: 1,
+        identifiedVisitors: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          rawRecordId: "raw_posthog_investor_demo_booked",
+        }),
+      ]),
+    });
+  });
+
+  it("surfaces raw-derived PostHog snapshot marketing counts when event rows are unavailable", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_posthog_investor_snapshot_summary",
+            provider: "POSTHOG",
+            objectType: "snapshot",
+            externalId: "posthog:snapshot:summary",
+            occurredAt: new Date("2026-02-16T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-16T00:00:00.000Z"),
+            payload: {
+              pageviewCount: 800,
+              conversionEventCount: 16,
+              eventNameCounts: { "$pageview": 800, demo_booked: 16 },
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(result.summary.websiteTraffic).toBe(800);
+    expect(result.summary.websiteSessions).toBe(800);
+    expect(result.summary.posthogPageviews).toBe(800);
+    expect(result.summary.conversionRate).toBe(2);
+    expect(result.summary.conversions).toBe(16);
+    expect(result.summary.posthogConversions).toBe(16);
+    expect(result.metrics.find((entry) => entry.key === "marketing.website_traffic")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 800,
+        websiteSessions: 800,
+        posthogPageviews: 800,
+        organicTraffic: 0,
+        searchClicks: 0,
+        searchImpressions: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          sourceId: "posthog:snapshot:summary",
+          rawRecordId: "raw_posthog_investor_snapshot_summary",
+        }),
+      ],
+    });
+    expect(result.metrics.find((entry) => entry.key === "marketing.conversion_rate")).toMatchObject({
+      status: "partial",
+      value: {
+        rate: 2,
+        conversions: 16,
+        websiteSessions: 800,
+        webflowFormSubmissions: 0,
+        hubspotLeadConversions: 0,
+        posthogConversions: 16,
+        identifiedVisitors: 0,
+        source: "raw_source_records",
+      },
+      sourceLineage: [
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          sourceId: "posthog:snapshot:summary",
+          rawRecordId: "raw_posthog_investor_snapshot_summary",
+        }),
+      ],
+    });
+  });
+
   it("surfaces raw-derived Webflow conversion rate when canonical conversion is missing", async () => {
     const prisma = {
       imladrisCanonicalMetricValue: {
@@ -1631,11 +1860,18 @@ describe("buildInvestorDashboardExport", () => {
     );
     expect(result.summary.pipelineEfficiency).toBe(20);
     expect(result.summary.acquisitionSpend).toBe(2_000);
+    expect(result.summary.qualifiedPipelineCount).toBe(1);
+    expect(result.pipeline).toMatchObject({
+      qualifiedPipelineValue: 40_000,
+      qualifiedPipelineCount: 1,
+      currency: "USD",
+    });
     expect(result.metrics.find((entry) => entry.key === "marketing.pipeline_efficiency")).toMatchObject({
       status: "partial",
       value: {
         ratio: 20,
         qualifiedPipeline: 40_000,
+        qualifiedPipelineCount: 1,
         acquisitionSpend: 2_000,
         websiteSessions: 250,
         webflowFormSubmissions: 0,
@@ -1872,6 +2108,9 @@ describe("buildInvestorDashboardExport", () => {
     expect(result.summary.customerHealth).toBe(58);
     expect(result.summary.atRiskAccounts).toBe(2);
     expect(result.summary.openSupportIssues).toBe(2);
+    expect(result.summary.retentionRiskEscalations).toBe(1);
+    expect(result.summary.retentionRiskBillingRiskAccounts).toBe(0);
+    expect(result.summary.retentionRiskLowUsageAccounts).toBe(0);
     expect(result.summary.customerActivity).toBe(3);
     expect(result.summary.supportInteractions).toBe(3);
     expect(result.summary.retentionRiskScore).toBe(42);
@@ -1918,6 +2157,111 @@ describe("buildInvestorDashboardExport", () => {
         escalations: 1,
         source: "raw_source_records",
       },
+    });
+  });
+
+  it("surfaces raw-derived customer activity from product usage and collaboration records when support records are absent", async () => {
+    const prisma = {
+      imladrisCanonicalMetricValue: {
+        findMany: vi.fn(async () => []),
+      },
+      imladrisRawSourceRecord: {
+        findMany: vi.fn(async () => [
+          {
+            id: "raw_posthog_customer_activity",
+            provider: "POSTHOG",
+            objectType: "account_usage",
+            externalId: "posthog:usage:alpha",
+            occurredAt: new Date("2026-02-12T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-12T10:00:00.000Z"),
+            payload: {
+              accountId: "acct_alpha",
+              activeUsers: 7,
+            },
+          },
+          {
+            id: "raw_slack_customer_thread",
+            provider: "SLACK",
+            objectType: "thread",
+            externalId: "slack:thread:alpha",
+            occurredAt: new Date("2026-02-13T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-13T10:00:00.000Z"),
+            payload: {
+              accountId: "acct_alpha",
+              threadTs: "1707828000.000000",
+              channelName: "customer-alpha",
+            },
+          },
+          {
+            id: "raw_workspace_customer_meeting",
+            provider: "GOOGLE_WORKSPACE",
+            objectType: "calendar_event",
+            externalId: "workspace:event:beta",
+            occurredAt: new Date("2026-02-14T10:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-02-14T10:00:00.000Z"),
+            payload: {
+              companyId: "acct_beta",
+              eventId: "evt_beta_success_review",
+              summary: "Customer success review",
+            },
+          },
+        ]),
+      },
+    };
+
+    const result = await buildInvestorDashboardExport({
+      prisma: prisma as never,
+      context,
+      range: "90d",
+      fromDate: periodStart,
+      toDate: periodEnd,
+      now: new Date("2026-06-03T00:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          provider: expect.objectContaining({
+            in: expect.arrayContaining(["POSTHOG", "SLACK", "GOOGLE_WORKSPACE"]),
+          }),
+        }),
+      }),
+    );
+    expect(result.summary.customerActivity).toBe(3);
+    expect(result.summary.supportInteractions).toBe(0);
+    expect(result.summary.productUsageRecords).toBe(1);
+    expect(result.summary.collaborationSignals).toBe(2);
+    expect(result.summary.customerActivityActiveAccounts).toBe(2);
+    expect(result.metrics.find((entry) => entry.key === "customer_success.customer_activity")).toMatchObject({
+      status: "partial",
+      value: {
+        count: 3,
+        supportInteractions: 0,
+        productUsageRecords: 1,
+        collaborationSignals: 2,
+        activeAccounts: 2,
+        source: "raw_source_records",
+      },
+      sourceLineage: expect.arrayContaining([
+        expect.objectContaining({
+          sourceKey: "posthog",
+          sourceType: "raw",
+          rawRecordId: "raw_posthog_customer_activity",
+        }),
+        expect.objectContaining({
+          sourceKey: "slack",
+          sourceType: "raw",
+          rawRecordId: "raw_slack_customer_thread",
+        }),
+        expect.objectContaining({
+          sourceKey: "google_workspace",
+          sourceType: "raw",
+          rawRecordId: "raw_workspace_customer_meeting",
+        }),
+      ]),
     });
   });
 
@@ -1970,6 +2314,9 @@ describe("buildInvestorDashboardExport", () => {
 
     expect(result.summary.churnRate).toBe(50);
     expect(result.summary.retentionRate).toBe(50);
+    expect(result.summary.churnedCustomers).toBe(1);
+    expect(result.summary.retainedCustomers).toBe(1);
+    expect(result.summary.retentionCustomerBase).toBe(2);
     expect(result.metrics.find((entry) => entry.key === "customer_success.churn_rate")).toMatchObject({
       status: "partial",
       value: {

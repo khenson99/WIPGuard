@@ -68,7 +68,18 @@ describe("/investor", () => {
           summary:
             "Approved ARR/MRR growth interpreted through runway, burn, pipeline, activation, retention risk, and trust labels.",
           drivers: [
-            { id: "pipeline", label: "Pipeline", value: 300000, unit: "currency", status: "strong" },
+            {
+              id: "pipeline",
+              label: "Pipeline",
+              value: 300000,
+              unit: "currency",
+              status: "strong",
+              trust: "fresh",
+              warnings: ["Pipeline evidence is stale."],
+              sourceLineageKeys: ["hubspot", "google_workspace"],
+              sourceLineageCount: 4,
+              latestSourceCapturedAt: "2026-06-01T07:30:00.000Z",
+            },
           ],
         },
         metrics: [
@@ -104,6 +115,9 @@ describe("/investor", () => {
     expect(screen.getByText("Investor Update")).toBeTruthy();
     expect(screen.getByText("Healthy ARR Growth")).toBeTruthy();
     expect(screen.getByText("Net new ARR $12.0k")).toBeTruthy();
+    expect(screen.getByText("Sources hubspot · google_workspace")).toBeTruthy();
+    expect(screen.getByText("Evidence 4 source records · latest 2026-06-01")).toBeTruthy();
+    expect(screen.getByText("Pipeline evidence is stale.")).toBeTruthy();
     expect(screen.getByText("Board-Final Metrics")).toBeTruthy();
     expect(screen.getByText("Sources stripe · hubspot")).toBeTruthy();
     expect(screen.getByText("Evidence 3 source records · latest 2026-06-01")).toBeTruthy();

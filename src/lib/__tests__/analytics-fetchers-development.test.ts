@@ -49,6 +49,39 @@ describe("development analytics fetchers", () => {
     }));
   });
 
+  it("summarizes fetched PostHog pageview and conversion events for downstream Imladris metrics", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      results: [
+        { uuid: "event_pageview_1", event: "$pageview" },
+        { uuid: "event_pageview_2", event: "page_view" },
+        { uuid: "event_demo", event: "demo_booked" },
+        { uuid: "event_trial", event: "trial_started" },
+        { uuid: "event_other", event: "feature_clicked" },
+      ],
+      next: null,
+    }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const data = await fetchPostHogData({
+      apiKey: "phx_token",
+      projectId: "project_1",
+      fromDate: new Date("2026-05-01T00:00:00.000Z"),
+      toDate: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(data).toEqual(expect.objectContaining({
+      pageviewCount: 2,
+      conversionEventCount: 2,
+      eventNameCounts: {
+        "$pageview": 1,
+        pageview: 1,
+        demobooked: 1,
+        trialstarted: 1,
+        featureclicked: 1,
+      },
+    }));
+  });
+
   it("follows Linear issue cursors across all pages in the requested update window", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({

@@ -199,6 +199,7 @@ describe("buildCompanyTrackerDashboard", () => {
           value: {
             count: 18_500,
             websiteSessions: 15_000,
+            posthogPageviews: 2_250,
             organicTraffic: 3_500,
             searchClicks: 240,
             searchImpressions: 4_800,
@@ -211,6 +212,7 @@ describe("buildCompanyTrackerDashboard", () => {
             conversions: 629,
             webflowFormSubmissions: 450,
             hubspotLeadConversions: 179,
+            posthogConversions: 55,
             identifiedVisitors: 210,
           },
         }),
@@ -237,6 +239,9 @@ describe("buildCompanyTrackerDashboard", () => {
             score: 86,
             atRiskAccounts: 3,
             openSupportIssues: 9,
+            escalations: 2,
+            accountsWithBillingRisk: 1,
+            lowUsageAccounts: 4,
           },
         }),
         metricRow({
@@ -246,18 +251,25 @@ describe("buildCompanyTrackerDashboard", () => {
             supportInteractions: 7,
             productUsageRecords: 151,
             collaborationSignals: 56,
+            activeAccounts: 39,
           },
         }),
         metricRow({
           metricKey: "customer_success.churn_rate",
           value: {
             rate: 2.5,
+            churnedCustomers: 1,
+            retainedCustomers: 39,
+            customerBase: 40,
           },
         }),
         metricRow({
           metricKey: "customer_success.retention_rate",
           value: {
             rate: 97.5,
+            retainedCustomers: 39,
+            churnedCustomers: 1,
+            customerBase: 40,
           },
         }),
         metricRow({
@@ -266,6 +278,9 @@ describe("buildCompanyTrackerDashboard", () => {
             score: 18,
             atRiskAccounts: 3,
             openSupportIssues: 9,
+            escalations: 2,
+            accountsWithBillingRisk: 1,
+            lowUsageAccounts: 4,
           },
         }),
       ],
@@ -328,6 +343,7 @@ describe("buildCompanyTrackerDashboard", () => {
       hubspotOnlyCustomers: 5,
       websiteTraffic: 18_500,
       websiteSessions: 15_000,
+      posthogPageviews: 2_250,
       organicTraffic: 3_500,
       searchClicks: 240,
       searchImpressions: 4_800,
@@ -335,6 +351,7 @@ describe("buildCompanyTrackerDashboard", () => {
       conversions: 629,
       webflowFormSubmissions: 450,
       hubspotLeadConversions: 179,
+      posthogConversions: 55,
       identifiedVisitors: 210,
       pipelineEfficiency: 40,
       acquisitionSpend: 25_000,
@@ -348,10 +365,17 @@ describe("buildCompanyTrackerDashboard", () => {
       supportInteractions: 7,
       productUsageRecords: 151,
       collaborationSignals: 56,
+      customerActivityActiveAccounts: 39,
       churnRate: 2.5,
       retentionRate: 97.5,
+      churnedCustomers: 1,
+      retainedCustomers: 39,
+      retentionCustomerBase: 40,
       retentionRiskScore: 18,
       retentionRiskAccounts: 3,
+      retentionRiskEscalations: 2,
+      retentionRiskBillingRiskAccounts: 1,
+      retentionRiskLowUsageAccounts: 4,
       currency: "USD",
     });
     expect(dashboard.northStar).toMatchObject({
@@ -478,6 +502,73 @@ describe("buildCompanyTrackerDashboard", () => {
       sourceLineageKeys: ["stripe", "hubspot"],
       latestSourceCapturedAt: "2026-06-01T03:15:00.000Z",
     });
+  });
+
+  it("aggregates sanitized source evidence onto north-star drivers", async () => {
+    const prisma = prismaMock({
+      canonicalRows: [
+        metricRow({
+          metricKey: "revenue.mrr",
+          value: {
+            amount: 32_000,
+            arr: 384_000,
+            currency: "USD",
+          },
+          lineage: [
+            {
+              sourceKey: "stripe",
+              sourceType: "raw",
+              sourceId: "sub_1",
+              rawRecordId: "raw_stripe_subscription_internal",
+              capturedAt: new Date("2026-06-01T01:00:00.000Z"),
+              metadata: {},
+            },
+            {
+              sourceKey: "hubspot",
+              sourceType: "raw",
+              sourceId: "deal_1",
+              rawRecordId: "raw_hubspot_subscription_internal",
+              capturedAt: new Date("2026-06-01T02:00:00.000Z"),
+              metadata: {},
+            },
+          ],
+        }),
+        metricRow({
+          metricKey: "finance.net_burn",
+          value: {
+            amount: 90_000,
+            currency: "USD",
+          },
+          lineage: [
+            {
+              sourceKey: "mercury",
+              sourceType: "raw",
+              sourceId: "txn_1",
+              rawRecordId: "raw_mercury_transaction_internal",
+              capturedAt: new Date("2026-06-01T03:15:00.000Z"),
+              metadata: {},
+            },
+          ],
+        }),
+      ],
+    });
+
+    const dashboard = await buildCompanyTrackerDashboard({
+      prisma: prisma as unknown as CompanyTrackerPrisma,
+      context: CONTEXT,
+      now: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    expect(dashboard.northStar.drivers).toContainEqual(
+      expect.objectContaining({
+        id: "burn_multiple",
+        sourceLineageKeys: ["mercury", "stripe", "hubspot"],
+        sourceLineageCount: 3,
+        latestSourceCapturedAt: "2026-06-01T03:15:00.000Z",
+      }),
+    );
+    expect(JSON.stringify(dashboard.northStar.drivers)).not.toContain("raw_mercury_transaction_internal");
+    expect(JSON.stringify(dashboard.northStar.drivers)).not.toContain("raw_stripe_subscription_internal");
   });
 
   it("uses the live analytics metrics layer when canonical company rows are not materialized yet", async () => {

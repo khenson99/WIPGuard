@@ -5419,6 +5419,120 @@ function hubspotLeadConversionCount(
   ).size;
 }
 
+function posthogMarketingEventTimestamp(record: RawSourceRecordRow, asOf: Date): Date | null {
+  return (
+    posthogEventTimestamp(record) ??
+    firstDateAtOrBefore(asOf, record.occurredAt, record.sourceUpdatedAt, record.sourceCreatedAt)
+  );
+}
+
+function posthogMarketingEventName(record: RawSourceRecordRow): string {
+  const payload = asRecord(record.payload);
+  return normalizeStageKey(
+    firstValueFromSources(wrapperSources(payload), [
+      "event",
+      "eventName",
+      "event_name",
+      "name",
+      "type",
+    ]),
+  );
+}
+
+function posthogMarketingEvents(
+  records: RawSourceRecordRow[],
+  periodStart: Date,
+  asOf: Date,
+): RawSourceRecordRow[] {
+  return latestPosthogEventsById(
+    records.filter(
+      (record) => recordIsProvider(record, IntegrationProvider.POSTHOG) && recordIsObjectType(record, "event"),
+    ),
+    asOf,
+  ).filter((record) => {
+    const eventTimestamp = posthogMarketingEventTimestamp(record, asOf);
+    if (!eventTimestamp) return false;
+    return eventTimestamp.getTime() >= periodStart.getTime() && eventTimestamp.getTime() <= asOf.getTime();
+  });
+}
+
+const POSTHOG_PAGEVIEW_EVENT_KEYS = new Set([
+  "$pageview",
+  "pageview",
+  "pageviewed",
+  "viewedpage",
+]);
+
+const POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
+  "bookdemo",
+  "contactformsubmitted",
+  "conversion",
+  "demobooked",
+  "demorequested",
+  "formsubmission",
+  "formsubmitted",
+  "leadconverted",
+  "leadcreated",
+  "requestdemo",
+  "signup",
+  "signedup",
+  "trialstarted",
+]);
+
+function posthogPageviewEventCount(records: RawSourceRecordRow[]): number {
+  return records.filter((record) => POSTHOG_PAGEVIEW_EVENT_KEYS.has(posthogMarketingEventName(record))).length;
+}
+
+function posthogMarketingConversionEventCount(records: RawSourceRecordRow[]): number {
+  return records.filter((record) => POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(posthogMarketingEventName(record))).length;
+}
+
+function posthogSnapshotPageviewValue(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.POSTHOG)) return null;
+  const payload = asRecord(record.payload);
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "pageviewCount",
+      "pageview_count",
+      "pageviews",
+      "page_views",
+      "posthogPageviews",
+      "posthog_pageviews",
+    ]),
+  );
+}
+
+function posthogSnapshotConversionValue(record: RawSourceRecordRow): number | null {
+  if (!recordIsProvider(record, IntegrationProvider.POSTHOG)) return null;
+  const payload = asRecord(record.payload);
+  return nonNegativeIntegerFrom(
+    firstValueFromSources(metricSources(payload), [
+      "conversionEventCount",
+      "conversion_event_count",
+      "posthogConversions",
+      "posthog_conversions",
+      "conversions",
+      "conversion_count",
+    ]),
+  );
+}
+
+function posthogSnapshotPageviews(records: RawSourceRecordRow[], asOf: Date): number {
+  return latestSnapshotMetric(
+    records.filter((record) => recordIsProvider(record, IntegrationProvider.POSTHOG)),
+    posthogSnapshotPageviewValue,
+    asOf,
+  ) ?? 0;
+}
+
+function posthogSnapshotConversions(records: RawSourceRecordRow[], asOf: Date): number {
+  return latestSnapshotMetric(
+    records.filter((record) => recordIsProvider(record, IntegrationProvider.POSTHOG)),
+    posthogSnapshotConversionValue,
+    asOf,
+  ) ?? 0;
+}
+
 function searchClicksValue(record: RawSourceRecordRow): number | null {
   if (!recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE)) return 0;
   const payload = asRecord(record.payload);
@@ -5623,6 +5737,12 @@ function computeMarketingPipelineEfficiency(
   const organicTraffic = semrushOrganicTraffic(records, asOf);
   const webflowFormSubmissions = webflowFormSubmissionCount(records, asOf);
   const hubspotLeadConversions = hubspotLeadConversionCount(records, periodStart, asOf);
+  const posthogEvents = posthogMarketingEvents(records, periodStart, asOf);
+  const posthogEventPageviews = posthogPageviewEventCount(posthogEvents);
+  const posthogEventConversions = posthogMarketingConversionEventCount(posthogEvents);
+  const posthogPageviews = posthogEventPageviews > 0 ? posthogEventPageviews : posthogSnapshotPageviews(records, asOf);
+  const posthogConversions =
+    posthogEventConversions > 0 ? posthogEventConversions : posthogSnapshotConversions(records, asOf);
   const googleSearchConsoleRecords = records.filter(
     (record) => recordIsProvider(record, IntegrationProvider.GOOGLE_SEARCH_CONSOLE),
   );
@@ -5660,6 +5780,8 @@ function computeMarketingPipelineEfficiency(
     websiteSessions,
     webflowFormSubmissions,
     hubspotLeadConversions,
+    posthogPageviews,
+    posthogConversions,
     organicTraffic,
     searchClicks: searchClickCount,
     searchImpressions: searchImpressionCount,
@@ -5671,8 +5793,9 @@ function computeMarketingPipelineEfficiency(
 function marketingWebsiteTrafficValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
   const count = value.websiteSessions + value.organicTraffic;
   return {
-    count: count > 0 ? count : value.searchClicks,
+    count: count > 0 ? count : value.searchClicks > 0 ? value.searchClicks : value.posthogPageviews,
     websiteSessions: value.websiteSessions,
+    posthogPageviews: value.posthogPageviews,
     organicTraffic: value.organicTraffic,
     searchClicks: value.searchClicks,
     searchImpressions: value.searchImpressions,
@@ -5680,13 +5803,15 @@ function marketingWebsiteTrafficValue(value: ReturnType<typeof computeMarketingP
 }
 
 function marketingConversionRateValue(value: ReturnType<typeof computeMarketingPipelineEfficiency>) {
-  const conversions = value.webflowFormSubmissions + value.hubspotLeadConversions;
+  const conversions = value.webflowFormSubmissions + value.hubspotLeadConversions + value.posthogConversions;
   const websiteSessions =
     value.websiteSessions > 0
       ? value.websiteSessions
       : value.organicTraffic > 0
         ? value.organicTraffic
-        : value.searchClicks;
+        : value.searchClicks > 0
+          ? value.searchClicks
+          : value.posthogPageviews;
   return {
     rate:
       websiteSessions > 0
@@ -5696,6 +5821,7 @@ function marketingConversionRateValue(value: ReturnType<typeof computeMarketingP
     websiteSessions,
     webflowFormSubmissions: value.webflowFormSubmissions,
     hubspotLeadConversions: value.hubspotLeadConversions,
+    posthogConversions: value.posthogConversions,
     identifiedVisitors: value.identifiedVisitors,
   };
 }
@@ -5722,7 +5848,7 @@ export async function materializeImladrisMarketingMetrics(
     IntegrationProvider.UNIFY,
     IntegrationProvider.HUBSPOT,
   ];
-  const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE];
+  const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE, IntegrationProvider.POSTHOG];
   const queriedRecords = await rawRecords.findMany({
     where: providerWindowWhere({
       providers: queryProviders,

@@ -211,6 +211,7 @@ export interface HubSpotData {
   meetings?: HubSpotMeetingRecord[];
   companies?: HubSpotCompanyRecord[];
   tickets?: HubSpotTicketRecord[];
+  contactRecords?: HubSpotContactRecord[];
   contacts: ContactMetrics;
   repScoreboard?: HubSpotRepScoreboardRow[];
   pipelineDetected?: { pipelineId: string; dealCount: number };
@@ -342,10 +343,22 @@ export interface HubSpotData {
 
 export interface HubSpotContactRecord {
   contactId: string;
+  email: string | null;
   createdAt: string | null;
   ownerId: string | null;
   repName: string;
   rawSource: string | null;
+  sourceData1?: string | null;
+  sourceData2?: string | null;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+  firstUrl?: string | null;
+  lastUrl?: string | null;
+  numVisits?: number | null;
+  numPageViews?: number | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
 }
 
 // ══════════════════════════════════════════════════════════

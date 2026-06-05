@@ -77,6 +77,7 @@ const DATA: CompanyTrackerDashboardData = {
     hubspotOnlyCustomers: 4,
     websiteTraffic: 18_500,
     websiteSessions: 15_000,
+    posthogPageviews: 2_250,
     organicTraffic: 3_500,
     searchClicks: 240,
     searchImpressions: 4_800,
@@ -84,6 +85,7 @@ const DATA: CompanyTrackerDashboardData = {
     conversions: 629,
     webflowFormSubmissions: 450,
     hubspotLeadConversions: 179,
+    posthogConversions: 55,
     identifiedVisitors: 210,
     pipelineEfficiency: 40,
     acquisitionSpend: 25_000,
@@ -97,10 +99,17 @@ const DATA: CompanyTrackerDashboardData = {
     supportInteractions: 7,
     productUsageRecords: 151,
     collaborationSignals: 56,
+    customerActivityActiveAccounts: 39,
     churnRate: 2.5,
     retentionRate: 97.5,
+    churnedCustomers: 1,
+    retainedCustomers: 39,
+    retentionCustomerBase: 40,
     retentionRiskScore: 18,
     retentionRiskAccounts: 3,
+    retentionRiskEscalations: 2,
+    retentionRiskBillingRiskAccounts: 1,
+    retentionRiskLowUsageAccounts: 4,
     currency: "USD",
   },
   northStar: {
@@ -134,6 +143,9 @@ const DATA: CompanyTrackerDashboardData = {
         unit: "ratio",
         status: "watch",
         detail: "Lower is better; <=1 is strong and <=2 is watch.",
+        sourceLineageCount: 4,
+        sourceLineageKeys: ["mercury", "stripe"],
+        latestSourceCapturedAt: "2026-06-01T04:15:00.000Z",
       },
     ],
   },
@@ -298,6 +310,8 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText(/ARR growth interpreted through runway/)).toBeTruthy();
     expect(screen.getByText("Benchmark Context")).toBeTruthy();
     expect(screen.getByText("Strong <=1.0x; watch <=2.0x.")).toBeTruthy();
+    expect(screen.getByText("Sources mercury · stripe")).toBeTruthy();
+    expect(screen.getByText("Evidence 4 source records · latest 2026-06-01")).toBeTruthy();
     expect(screen.getByText("net burn / monthly net-new ARR")).toBeTruthy();
     expect(screen.getByText(/monthly net-new ARR proxy/)).toBeTruthy();
     expect(screen.getByText("Cohorts And Segments")).toBeTruthy();
@@ -305,26 +319,34 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("at-risk accounts / active customers")).toBeTruthy();
     expect(screen.getAllByText("ARR").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$384.0k").length).toBeGreaterThan(0);
+    expect(screen.getByText("MRR $32.0k x 12")).toBeTruthy();
+    expect(screen.getByText("ARR equivalent $384.0k")).toBeTruthy();
     expect(screen.getByText("Revenue")).toBeTruthy();
     expect(screen.getByText("$456.0k")).toBeTruthy();
+    expect(screen.getByText("$384.0k subscription / $72.0k services")).toBeTruthy();
     expect(screen.getByText("Subscription Revenue")).toBeTruthy();
+    expect(screen.getByText("84.2% of revenue")).toBeTruthy();
     expect(screen.getByText("Services Revenue")).toBeTruthy();
+    expect(screen.getByText("15.8% of revenue")).toBeTruthy();
     expect(screen.getByText("Cash Balance")).toBeTruthy();
+    expect(screen.getByText("8.5 mo runway / $90.0k net burn")).toBeTruthy();
     expect(screen.getByText("Expenses")).toBeTruthy();
+    expect(screen.getByText("$98.5k COGS / $83.5k operating")).toBeTruthy();
     expect(screen.getByText("Gross Margin")).toBeTruthy();
     expect(screen.getByText("$160.0k out / $70.0k in")).toBeTruthy();
     expect(screen.getByText("$456.0k revenue / $98.5k COGS incl. $12.0k Stripe fees")).toBeTruthy();
     expect(screen.getByText("7 deals / 84.0% collaboration")).toBeTruthy();
     expect(screen.getByText("Demos")).toBeTruthy();
-    expect(screen.getByText("9 scheduled / 3 requested")).toBeTruthy();
+    expect(screen.getByText("9 scheduled / 3 requested / 4 HubSpot deals / 3 HubSpot meetings / 2 calendar / 3 Webflow")).toBeTruthy();
     expect(screen.getByText("Customers")).toBeTruthy();
     expect(screen.getByText("35 Stripe / 4 HubSpot-only")).toBeTruthy();
     expect(screen.getByText("37 Stripe / 5 HubSpot-only")).toBeTruthy();
     expect(screen.getByText("Website Traffic")).toBeTruthy();
-    expect(screen.getByText("15,000 sessions / 3,500 organic")).toBeTruthy();
+    expect(screen.getByText("15,000 sessions / 3,500 organic / 2,250 PostHog")).toBeTruthy();
     expect(screen.getByText("Conversion Rate")).toBeTruthy();
+    expect(screen.getByText("629 conversions / 15,000 sessions")).toBeTruthy();
     expect(screen.getByText("Conversions")).toBeTruthy();
-    expect(screen.getByText("450 Webflow / 179 HubSpot / 210 identified")).toBeTruthy();
+    expect(screen.getByText("450 Webflow / 179 HubSpot / 55 PostHog / 210 identified")).toBeTruthy();
     expect(screen.getByText("Pipeline Efficiency")).toBeTruthy();
     expect(screen.getByText("$1.00m pipeline / $25.0k spend")).toBeTruthy();
     expect(screen.getByText("Activation Rate")).toBeTruthy();
@@ -332,11 +354,13 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("Customer Health")).toBeTruthy();
     expect(screen.getByText("3 at risk / 9 open support")).toBeTruthy();
     expect(screen.getByText("Customer Activity")).toBeTruthy();
-    expect(screen.getByText("7 support / 151 usage / 56 collaboration")).toBeTruthy();
+    expect(screen.getByText("7 support / 151 usage / 56 collaboration / 39 active accounts")).toBeTruthy();
     expect(screen.getByText("Churn Rate")).toBeTruthy();
+    expect(screen.getByText("1 churned / 40 base")).toBeTruthy();
     expect(screen.getByText("Retention Rate")).toBeTruthy();
+    expect(screen.getByText("39 retained / 40 base")).toBeTruthy();
     expect(screen.getByText("Retention Risk")).toBeTruthy();
-    expect(screen.getByText("3 at risk from retention model")).toBeTruthy();
+    expect(screen.getByText("3 at risk / 2 escalations / 1 billing risk / 4 low usage")).toBeTruthy();
     expect(screen.getByText("$72.0k")).toBeTruthy();
     expect(screen.getAllByText("12").length).toBeGreaterThan(0);
     expect(screen.getByText("18,500")).toBeTruthy();
