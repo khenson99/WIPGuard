@@ -2316,7 +2316,7 @@ function applyStripeSubscriptionDiscounts(
 function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const stripeSources = [...sources, ...subscriptionSources];
   const periodSources = stripeSources.flatMap((source) => [
     nestedRecord(source.current_period),
@@ -2354,7 +2354,7 @@ function stripeSubscriptionInactiveAt(record: RawSourceRecordRow): Date | null {
 function isInactiveStripeSubscription(record: RawSourceRecordRow, asOf?: Date): boolean {
   const payload = asRecord(record.payload);
   const sources = wrapperSources(payload);
-  const subscriptionSources = sources.map((source) => nestedRecord(source.subscription));
+  const subscriptionSources = sources.map((source) => nestedRecordFromKey(source, "subscription"));
   const status = firstValueFromSources([...sources, ...subscriptionSources], ["status"]);
   const inactiveAt = asOf ? stripeSubscriptionInactiveAt(record) : null;
   if (!INACTIVE_STRIPE_SUBSCRIPTION_STATUSES.has(normalizeStageKey(status))) {
