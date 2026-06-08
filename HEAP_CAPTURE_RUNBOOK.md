@@ -1,92 +1,45 @@
-# WIPGuard-app heap-leak capture runbook
+# WIPGuard-app heap-leak capture runbook (v2 — drives the load itself)
 
-Goal: capture a V8 heap snapshot from the **live, leaking** `WIPGuard-app`
-process so we can identify the exact object that grows to ~4 GB and OOMs
-(~10 min cadence). Run these from your machine (Railway CLI logged in, `ssh`
-available). Nothing here changes prod config or code.
+`snap1`/`snap2` came back as identical ~48 MB baselines: the heap never grew
+because nothing drove **authenticated** dashboard load during the window (this
+app is flat at idle and only leaks on authenticated `/api/analytics` requests).
 
-The plan: take **two** snapshots a few minutes apart from the running process
-via the V8 inspector, then diff them — the constructor whose retained size
-keeps growing is the leak.
+`capture-leak.sh` fixes that: inside the container it mints a real session,
+hammers `/api/analytics`, watches RSS climb, and snapshots once the heap has
+clearly grown — then you copy the snapshot out and send it to Claude.
 
----
+## Run it (from your machine, in your WIPGuard clone)
 
-## 0. Link (skip if already linked)
 ```bash
-railway link        # pick: WIPGuard  ->  production  ->  WIPGuard-app
-```
+git checkout claude/wipguard-bug-vZt1r && git pull   # gets capture-leak.sh
 
-## 1. Get a fresh ~10-min window and open a shell in the container
-```bash
+# fresh instance + ~10-min window
 railway redeploy --service WIPGuard-app -y
-sleep 75                                   # let it boot + finish migrations
-railway ssh --service WIPGuard-app
+sleep 75
+
+# ship the script into the container and run it (one shot, no interactive paste)
+B64=$(base64 < capture-leak.sh | tr -d '\n')
+railway ssh --service WIPGuard-app "echo $B64 | base64 -d > /tmp/cap.sh && bash /tmp/cap.sh"
 ```
 
-## 2. Inside the container: open the inspector on the server process
+Watch the `round N  rss=…kB` lines — RSS should climb fast. It stops and writes
+`/tmp/leak.heapsnapshot.gz` once RSS passes ~350 MB.
+
+## Copy it out and hand it back
+
 ```bash
-PID=$(pgrep -f next-server | head -1); echo "server pid=$PID"
-grep VmRSS /proc/$PID/status               # note the baseline RSS
-kill -USR1 "$PID"                          # opens V8 inspector on 127.0.0.1:9229
+railway ssh --service WIPGuard-app "cat /tmp/leak.heapsnapshot.gz" > leak.heapsnapshot.gz
 ```
 
-## 3. Inside the container: drop in a tiny snapshot helper
-`ws` ships with the app (socket.io depends on it), so this needs no installs.
-```bash
-cat > /tmp/snap.js <<'EOF'
-const http=require('http'), fs=require('fs');
-const WS=require('/app/node_modules/ws');
-const out=process.argv[2]||'/tmp/app.heapsnapshot';
-http.get('http://127.0.0.1:9229/json/list',r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{
-  const u=JSON.parse(d)[0].webSocketDebuggerUrl;
-  const ws=new WS(u), f=fs.createWriteStream(out);
-  ws.on('open',()=>ws.send(JSON.stringify({id:1,method:'HeapProfiler.takeHeapSnapshot',params:{reportProgress:false}})));
-  ws.on('message',m=>{const o=JSON.parse(m);
-    if(o.method==='HeapProfiler.addHeapSnapshotChunk') f.write(o.params.chunk);
-    if(o.id===1) f.end(()=>{console.log('wrote',out,fs.statSync(out).size,'bytes');ws.close();process.exit(0);});});
-});}).on('error',e=>{console.error('inspector not reachable — did kill -USR1 run?',e.message);process.exit(1);});
-EOF
-cd /app
-```
+Then **upload `leak.heapsnapshot.gz` in this chat** (zip it if the client only
+takes .zip). Also paste the `round … rss=` lines — even before I open the file,
+the growth curve tells me how fast each request leaks.
 
-## 4. Take snapshot #1, wait ~3 min, take snapshot #2
-```bash
-node /tmp/snap.js /tmp/snap1.heapsnapshot
-sleep 180
-grep VmRSS /proc/$PID/status               # RSS should be visibly higher now
-node /tmp/snap.js /tmp/snap2.heapsnapshot
-gzip -f /tmp/snap1.heapsnapshot /tmp/snap2.heapsnapshot
-ls -la /tmp/snap*.gz
-exit                                        # leave the container shell
-```
+### If `auth probe -> 401`
+The token was rejected (cookie name / secret mismatch). Tell me and I'll adjust
+the mint — but it should be 200.
 
-## 5. Copy both snapshots to your machine
-```bash
-railway ssh --service WIPGuard-app "cat /tmp/snap1.heapsnapshot.gz" > snap1.heapsnapshot.gz
-railway ssh --service WIPGuard-app "cat /tmp/snap2.heapsnapshot.gz" > snap2.heapsnapshot.gz
-gunzip -f snap1.heapsnapshot.gz snap2.heapsnapshot.gz
-ls -la snap1.heapsnapshot snap2.heapsnapshot
-```
-
-## 6. Hand them back
-Either:
-- **Send me `snap1.heapsnapshot` + `snap2.heapsnapshot`** (commit to a branch, or
-  attach), and I'll identify the leaking allocation and write the fix; or
-- **Self-serve in Chrome:** open `chrome://inspect` → DevTools → **Memory** →
-  **Load** snap1, then snap2 → select snap2 → mode **Comparison** (vs snap1) →
-  sort by **Size Delta** / **# New**. The constructor at the top with a large
-  positive delta is the leak — tell me what it is and I'll fix it.
-
----
-
-### Notes / fallback
-- If `require('/app/node_modules/ws')` errors (path differs), run
-  `find / -maxdepth 6 -type d -name ws -path '*node_modules*' 2>/dev/null` and
-  use that path.
-- Snapshots are roughly the size of live heap; taking them a few minutes in
-  (a few hundred MB) keeps files movable. gzip shrinks them ~5–10×.
-- Fallback (auto-dump at OOM, needs a volume): add a Railway volume mounted at
-  `/app/snapshots`, set `NODE_OPTIONS=--heapsnapshot-near-heap-limit=2`, change
-  the start command to `cd /app/snapshots && node /app/server.js`, redeploy; the
-  next OOM writes a `.heapsnapshot` to the volume. The inspector method above is
-  simpler and is preferred.
+### If RSS does NOT climb
+Then the leak isn't on `/api/analytics` and I need to widen the probe to other
+authenticated dashboard endpoints — paste the round-by-round RSS and I'll
+iterate on which endpoint to hit.
