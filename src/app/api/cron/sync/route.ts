@@ -360,7 +360,21 @@ async function executeCronSync(input: {
     // and this cron route stay in lockstep. We destructure the combined
     // result back into separate `analytics` and `pruning` response fields
     // to preserve the external response-body shape that monitoring depends on.
-    const [analyticsSyncResult, rulesResult, healthResult, retentionResult] = await Promise.allSettled([
+    //
+    // NOTE: These operations run SEQUENTIALLY instead of via Promise.allSettled
+    // to avoid holding all provider API payloads in memory simultaneously.
+    // Running them in parallel caused RSS to spike to ~3.4 GB and OOM.
+    // Sequential execution keeps peak memory bounded to a single operation's
+    // footprint at a time. See memory leak investigation (Jun 2026).
+    async function settleAsync<T>(fn: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+      try {
+        return { status: "fulfilled", value: await fn() };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    }
+
+    const analyticsSyncResult = await settleAsync(() =>
       runAnalyticsSync({
         prisma,
         userIds,
@@ -368,18 +382,27 @@ async function executeCronSync(input: {
         includeMonthlyFinancialHistory: true,
         pruneOlderThanDays: parseRetentionDays(),
       }),
+    );
+
+    const rulesResult = await settleAsync(() =>
       runRules({
         mode: "incremental",
         dryRun: false,
         userIds,
         startedAt,
       }),
-      // Health checks run per-user; shared with the orchestrator —
-      // see src/lib/sync/health-checks.ts. The returned array preserves
-      // the cron route's prior `settled.health` shape.
+    );
+
+    // Health checks run per-user; shared with the orchestrator —
+    // see src/lib/sync/health-checks.ts. The returned array preserves
+    // the cron route's prior `settled.health` shape.
+    const healthResult = await settleAsync(() =>
       runHealthChecksSync({ prisma, userIds }),
+    );
+
+    const retentionResult = await settleAsync(() =>
       runRetentionMaterialization({ ownerUserId, userIds }),
-    ]);
+    );
 
     const settled = {
       analytics: null as unknown,
