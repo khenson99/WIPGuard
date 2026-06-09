@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { runHealthChecksSync } from "@/lib/sync/health-checks";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
@@ -524,29 +525,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Run synchronously instead of via after().
-  // Next.js's after() retains callback closures indefinitely in the
-  // module-level afterContext, causing ~470 MB/cycle heap growth that
-  // survives forced GC. Running synchronously ensures the entire
-  // request scope is released when the handler returns.
-  const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+  after(async () => {
+    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    if (result.status >= 400) {
+      console.error("POST /api/cron/sync background error:", {
+        status: result.status,
+        error: (result.body as Record<string, unknown>).error ?? "unknown",
+      });
+    } else if (isDegradedSyncBody(result.body)) {
+      console.error("POST /api/cron/sync background degraded:", {
+        failures: (result.body as Record<string, unknown>).failures ?? [],
+      });
+    }
 
-  // Reset the Prisma client to release accumulated adapter state
-  // (prepared statements, result buffers, query plan caches) that
-  // grows by ~475 MB per cycle. The next query will lazily create
-  // a fresh client and connection pool.
-  await resetPrismaClient();
-  (globalThis as unknown as { gc?: () => void }).gc?.();
+    // Reset the Prisma client to release accumulated adapter state
+    // (prepared statements, result buffers, query plan caches) that
+    // grows by ~475 MB per cycle. The next query will lazily create
+    // a fresh client and connection pool.
+    await resetPrismaClient();
+    (globalThis as unknown as { gc?: () => void }).gc?.();
+  });
 
-  if (result.status >= 400) {
-    console.error("POST /api/cron/sync error:", {
-      status: result.status,
-      error: (result.body as Record<string, unknown>).error ?? "unknown",
-    });
-  } else if (isDegradedSyncBody(result.body)) {
-    console.error("POST /api/cron/sync degraded:", {
-      failures: (result.body as Record<string, unknown>).failures ?? [],
-    });
-  }
-  return NextResponse.json(result.body, { status: result.status });
+  return NextResponse.json(
+    {
+      ok: true,
+      queued: true,
+      mode: "background",
+      startedAt,
+      ownerUserId,
+      userIds,
+    },
+    { status: 202 }
+  );
 }
