@@ -91,6 +91,11 @@ export async function storeAnalyticsSnapshot(input: SnapshotUpsertInput): Promis
       capturedAt: new Date(),
       expiresAt: input.expiresAt,
     },
+    // Prevent Prisma from returning the full payload column — each
+    // snapshot payload can be tens of MB and the return value is unused.
+    // Without this, Prisma deserializes the payload back into a JS object,
+    // causing ~200 MB of transient allocations per provider write.
+    select: { id: true },
   });
 }
 
@@ -129,6 +134,7 @@ export async function storeAnalyticsSnapshotFailure(input: SnapshotFailureInput)
       capturedAt: new Date(),
       expiresAt: input.expiresAt,
     },
+    select: { id: true },
   });
 }
 
