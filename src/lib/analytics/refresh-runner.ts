@@ -850,16 +850,7 @@ async function refreshForUserAndRange(input: {
     const provider = providerForSnapshotKey(job.providerKey);
 
     try {
-      const memBefore = process.memoryUsage();
       let payload = await runRefreshJobWithRetry(job);
-      const payloadSize = JSON.stringify(payload).length;
-      const memAfterFetch = process.memoryUsage();
-      console.error(`[refresh:mem] ${job.providerKey} range=${input.rangePreset}`, {
-        payloadSizeKB: Math.round(payloadSize / 1024),
-        heapBeforeMB: Math.round(memBefore.heapUsed / 1024 / 1024),
-        heapAfterFetchMB: Math.round(memAfterFetch.heapUsed / 1024 / 1024),
-        rssMB: Math.round(memAfterFetch.rss / 1024 / 1024),
-      });
       assertRefreshPayloadComplete(job.providerKey, payload);
       const capturedAt = new Date();
       await persistImladrisRawSnapshot({

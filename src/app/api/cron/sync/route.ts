@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { runHealthChecksSync } from "@/lib/sync/health-checks";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
@@ -38,10 +38,7 @@ function parseRetentionDays(): number {
   return 30;
 }
 
-function shouldWaitForCompletion(request: NextRequest): boolean {
-  const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
-  return wait === "1" || wait === "true";
-}
+
 
 async function runRetentionMaterialization(input: {
   ownerUserId: string | null;
@@ -527,39 +524,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  if (shouldWaitForCompletion(request)) {
-    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
-    return NextResponse.json(result.body, { status: result.status });
+  // Run synchronously instead of via after().
+  // Next.js's after() retains callback closures indefinitely in the
+  // module-level afterContext, causing ~470 MB/cycle heap growth that
+  // survives forced GC. Running synchronously ensures the entire
+  // request scope is released when the handler returns.
+  const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+  if (result.status >= 400) {
+    console.error("POST /api/cron/sync error:", {
+      status: result.status,
+      error: (result.body as Record<string, unknown>).error ?? "unknown",
+    });
+  } else if (isDegradedSyncBody(result.body)) {
+    console.error("POST /api/cron/sync degraded:", {
+      failures: (result.body as Record<string, unknown>).failures ?? [],
+    });
   }
-
-  after(async () => {
-    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
-    if (result.status >= 400) {
-      // Log only the error message, NOT the full body (which can be hundreds of MB
-      // and retains references to all sync results, preventing GC).
-      console.error("POST /api/cron/sync background error:", {
-        status: result.status,
-        error: (result.body as Record<string, unknown>).error ?? "unknown",
-      });
-      return;
-    }
-    if (isDegradedSyncBody(result.body)) {
-      // Log only the failures list, NOT the full body.
-      console.error("POST /api/cron/sync background degraded:", {
-        failures: (result.body as Record<string, unknown>).failures ?? [],
-      });
-    }
-  });
-
-  return NextResponse.json(
-    {
-      ok: true,
-      queued: true,
-      mode: "background",
-      startedAt,
-      ownerUserId,
-      userIds,
-    },
-    { status: 202 }
-  );
+  return NextResponse.json(result.body, { status: result.status });
 }
