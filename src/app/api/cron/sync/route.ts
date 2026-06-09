@@ -18,7 +18,7 @@ import {
   bestEffortMigrateRulesToOwner,
   ensureIntegrationOwnerOrganizationId,
 } from "@/lib/integrations/ownership";
-import { prisma } from "@/lib/prisma";
+import { prisma, resetPrismaClient } from "@/lib/prisma";
 import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
 
 function isAuthorized(request: NextRequest): boolean {
@@ -530,6 +530,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // survives forced GC. Running synchronously ensures the entire
   // request scope is released when the handler returns.
   const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+
+  // Reset the Prisma client to release accumulated adapter state
+  // (prepared statements, result buffers, query plan caches) that
+  // grows by ~475 MB per cycle. The next query will lazily create
+  // a fresh client and connection pool.
+  await resetPrismaClient();
+  (globalThis as unknown as { gc?: () => void }).gc?.();
+
   if (result.status >= 400) {
     console.error("POST /api/cron/sync error:", {
       status: result.status,
