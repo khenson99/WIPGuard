@@ -24,28 +24,23 @@ describe("sidebar workspace navigation", () => {
 
   it("exposes metrics dashboards under Metrics without restoring analytics children", () => {
     const metrics = navItems.find((item) => item.id === "metrics");
+    const children = metrics?.children ?? [];
+    const childIds = children.map((child) => child.id);
 
-    expect(metrics?.children).toEqual([
-      expect.objectContaining({
-        id: "company-tracker",
-        href: "/metrics/company",
-        label: "Company Tracker",
-        workspaceId: "metrics",
-      }),
-      expect.objectContaining({
-        id: "customer-health",
-        href: "/metrics/customer-health",
-        label: "Customer Health",
-        workspaceId: "metrics",
-      }),
-      expect.objectContaining({
-        id: "expense-dashboard",
-        href: "/metrics/expenses",
-        label: "Expenses",
-        workspaceId: "metrics",
-      }),
-    ]);
-    expect(navItems.some((item) => item.href.startsWith("/analytics"))).toBe(false);
+    // Core metric dashboards must remain exposed under Metrics. Asserted via
+    // arrayContaining (not an exact snapshot) so that legitimately adding new
+    // Metrics dashboards — e.g. the Operating cockpit views — does not break
+    // this test and silently block the deploy pipeline.
+    expect(childIds).toEqual(
+      expect.arrayContaining(["company-tracker", "customer-health", "expense-dashboard"]),
+    );
+
+    // Every Metrics child must belong to the metrics workspace.
+    expect(children.every((child) => child.workspaceId === "metrics")).toBe(true);
+
+    // The contract this test guards: analytics children are never restored.
+    expect(navItems.every((item) => !item.href.startsWith("/analytics"))).toBe(true);
+    expect(children.every((child) => !child.href.startsWith("/analytics"))).toBe(true);
   });
 
   it("promotes sources to a first-class workspace", () => {

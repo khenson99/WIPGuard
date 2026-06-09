@@ -153,7 +153,12 @@ async function loadLatestCompanySnapshots(input: {
       toDate: true,
       lastError: true,
     },
-    orderBy: [{ capturedAt: "desc" }],
+    // Only the latest SUCCESS snapshot per provider is used (see
+    // latestSnapshotsByProvider below). Reduce in the DB with DISTINCT ON
+    // (providerKey) instead of loading the full, ever-growing snapshot history
+    // (with payloads) into memory — same OOM class as buildCompanyTrackerDashboard.
+    distinct: ["providerKey"],
+    orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
   })) as AnalyticsSnapshotRow[];
   const rows = loadedRows.filter((row) => {
     const capturedAt = toDate(row.capturedAt);
