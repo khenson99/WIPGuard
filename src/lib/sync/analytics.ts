@@ -49,7 +49,7 @@ export interface AnalyticsSyncInput {
 export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
-  imladris: ImladrisMaterializationSyncResult[];
+  imladris: ImladrisMaterializationSyncSummary[];
 }
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
@@ -71,6 +71,18 @@ interface ImladrisMaterializationSyncResult {
   periodStart: string;
   periodEnd: string;
   metrics: MaterializedImladrisMetricResult[];
+  error?: string;
+  warning?: string;
+}
+
+/** Lightweight summary returned to callers (omits full metric values). */
+interface ImladrisMaterializationSyncSummary {
+  userId: string;
+  organizationId: string | null;
+  periodStart: string;
+  periodEnd: string;
+  metricsCount: number;
+  metricKeys: string[];
   error?: string;
   warning?: string;
 }
@@ -231,15 +243,30 @@ export async function runAnalyticsSync(
     failureCount > 0
       ? `Analytics refresh reported ${failureCount} provider failure${failureCount === 1 ? '' : 's'}; canonical materialization used available raw records.`
       : undefined;
-  const [pruning, imladris] = await Promise.all([
-    pruneAnalyticsSnapshots({ olderThanDays }),
-    runImladrisMaterializationSync({
-      prisma: input.prisma,
-      userIds,
-      now,
-      warning: materializationWarning,
-    }),
-  ]);
+  // Run pruning THEN materialization — NOT in parallel.
+  // Running them concurrently doubles peak memory because both
+  // phases hold large query result buffers from the pg pool.
+  const pruning = await pruneAnalyticsSnapshots({ olderThanDays });
+  const imladris = await runImladrisMaterializationSync({
+    prisma: input.prisma,
+    userIds,
+    now,
+    warning: materializationWarning,
+  });
 
-  return { refresh, pruning, imladris };
+  // Strip full metric values from the result — they're already
+  // persisted to the DB. Keeping them in the response body retains
+  // hundreds of MB across cron cycles (held by the after() closure).
+  const imladrisSummary = imladris.map((entry) => ({
+    userId: entry.userId,
+    organizationId: entry.organizationId,
+    periodStart: entry.periodStart,
+    periodEnd: entry.periodEnd,
+    metricsCount: entry.metrics.length,
+    metricKeys: entry.metrics.map((m) => m.metricKey),
+    ...(entry.warning ? { warning: entry.warning } : {}),
+    ...(entry.error ? { error: entry.error } : {}),
+  }));
+
+  return { refresh, pruning, imladris: imladrisSummary };
 }
