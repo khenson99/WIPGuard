@@ -6908,15 +6908,17 @@ export async function materializeImladrisCustomerSuccessMetrics(
 export async function materializeImladrisCanonicalMetrics(
   input: MaterializeDevelopmentMetricsInput,
 ): Promise<MaterializedImladrisMetricResult[]> {
-  const [development, productActivation, finance, sales, marketing, customerSuccess] =
-    await Promise.all([
-      materializeImladrisDevelopmentMetrics(input),
-      materializeImladrisProductActivationMetric(input),
-      materializeImladrisFinanceMetrics(input),
-      materializeImladrisSalesMetrics(input),
-      materializeImladrisMarketingMetrics(input),
-      materializeImladrisCustomerSuccessMetrics(input),
-    ]);
+  // Run materializations SEQUENTIALLY instead of via Promise.all.
+  // Each materialization function loads ALL raw source records (with full
+  // JSON payloads) from the database. Running 6 of them in parallel caused
+  // V8 heap to spike to ~4 GB and OOM. Sequential execution keeps peak
+  // memory bounded to one query's result set at a time.
+  const development = await materializeImladrisDevelopmentMetrics(input);
+  const productActivation = await materializeImladrisProductActivationMetric(input);
+  const finance = await materializeImladrisFinanceMetrics(input);
+  const sales = await materializeImladrisSalesMetrics(input);
+  const marketing = await materializeImladrisMarketingMetrics(input);
+  const customerSuccess = await materializeImladrisCustomerSuccessMetrics(input);
 
   return [
     development,

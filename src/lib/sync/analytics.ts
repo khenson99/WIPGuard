@@ -153,42 +153,44 @@ async function runImladrisMaterializationSync(input: {
   const periodEnd = input.now;
   const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
 
-  return Promise.all(
-    contexts.map(async (context) => {
-      const baseResult = {
+  // Run materializations SEQUENTIALLY per user to avoid loading all users'
+  // raw source records (with full JSON payloads) into memory simultaneously.
+  const results: ImladrisMaterializationSyncResult[] = [];
+  for (const context of contexts) {
+    const baseResult = {
+      userId: context.userId,
+      organizationId: context.organizationId,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      ...(input.warning ? { warning: input.warning } : {}),
+    };
+
+    try {
+      results.push({
+        ...baseResult,
+        metrics: await materializeImladrisCanonicalMetrics({
+          prisma: input.prisma,
+          context,
+          periodStart,
+          periodEnd,
+          now: input.now,
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("analytics_sync.imladris_materialization_failed", {
         userId: context.userId,
         organizationId: context.organizationId,
-        periodStart: periodStart.toISOString(),
-        periodEnd: periodEnd.toISOString(),
-        ...(input.warning ? { warning: input.warning } : {}),
-      };
-
-      try {
-        return {
-          ...baseResult,
-          metrics: await materializeImladrisCanonicalMetrics({
-            prisma: input.prisma,
-            context,
-            periodStart,
-            periodEnd,
-            now: input.now,
-          }),
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("analytics_sync.imladris_materialization_failed", {
-          userId: context.userId,
-          organizationId: context.organizationId,
-          error: message,
-        });
-        return {
-          ...baseResult,
-          metrics: [],
-          error: message,
-        };
-      }
-    }),
-  );
+        error: message,
+      });
+      results.push({
+        ...baseResult,
+        metrics: [],
+        error: message,
+      });
+    }
+  }
+  return results;
 }
 
 /**
