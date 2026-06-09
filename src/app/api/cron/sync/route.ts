@@ -386,7 +386,7 @@ async function executeCronSync(input: {
     }
 
     logMemory("before-analytics");
-    const analyticsSyncResult = await settleAsync(() =>
+    let analyticsSyncResult = await settleAsync(() =>
       runAnalyticsSync({
         prisma,
         userIds,
@@ -396,8 +396,11 @@ async function executeCronSync(input: {
       }),
     );
 
+    // Force GC between phases to reclaim query result buffers.
+    // Requires NODE_OPTIONS="--expose-gc --max-old-space-size=4096".
+    (globalThis as unknown as { gc?: () => void }).gc?.();
     logMemory("after-analytics");
-    const rulesResult = await settleAsync(() =>
+    let rulesResult = await settleAsync(() =>
       runRules({
         mode: "incremental",
         dryRun: false,
@@ -406,16 +409,18 @@ async function executeCronSync(input: {
       }),
     );
 
+    (globalThis as unknown as { gc?: () => void }).gc?.();
     logMemory("after-rules");
     // Health checks run per-user; shared with the orchestrator —
     // see src/lib/sync/health-checks.ts. The returned array preserves
     // the cron route's prior `settled.health` shape.
-    const healthResult = await settleAsync(() =>
+    let healthResult = await settleAsync(() =>
       runHealthChecksSync({ prisma, userIds }),
     );
 
+    (globalThis as unknown as { gc?: () => void }).gc?.();
     logMemory("after-health");
-    const retentionResult = await settleAsync(() =>
+    let retentionResult = await settleAsync(() =>
       runRetentionMaterialization({ ownerUserId, userIds }),
     );
     logMemory("after-retention");
@@ -439,6 +444,9 @@ async function executeCronSync(input: {
       failures.push(`analytics: ${msg}`);
       console.error("POST /api/cron/sync analytics failed:", analyticsSyncResult.reason);
     }
+    // Release the full analytics result (contains all Imladris materialization
+    // data). We've already extracted refresh + pruning into `settled`.
+    analyticsSyncResult = null as unknown as typeof analyticsSyncResult;
     if (rulesResult.status === "fulfilled") {
       settled.rules = rulesResult.value;
       failures.push(...collectRulesPartialFailures(rulesResult.value));
@@ -447,6 +455,7 @@ async function executeCronSync(input: {
       failures.push(`rules: ${msg}`);
       console.error("POST /api/cron/sync rules failed:", rulesResult.reason);
     }
+    rulesResult = null as unknown as typeof rulesResult;
     if (healthResult.status === "fulfilled") {
       settled.health = healthResult.value;
       failures.push(...collectHealthPartialFailures(healthResult.value));
@@ -455,6 +464,7 @@ async function executeCronSync(input: {
       failures.push(`health: ${msg}`);
       console.error("POST /api/cron/sync health failed:", healthResult.reason);
     }
+    healthResult = null as unknown as typeof healthResult;
     if (retentionResult.status === "fulfilled") {
       settled.retention = retentionResult.value;
     } else {
@@ -462,6 +472,7 @@ async function executeCronSync(input: {
       failures.push(`retention: ${msg}`);
       console.error("POST /api/cron/sync retention materialization failed:", retentionResult.reason);
     }
+    retentionResult = null as unknown as typeof retentionResult;
 
     return {
       status: 200,
@@ -524,11 +535,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   after(async () => {
     const result = await executeCronSync({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
-      console.error("POST /api/cron/sync background error:", result.body);
+      // Log only the error message, NOT the full body (which can be hundreds of MB
+      // and retains references to all sync results, preventing GC).
+      console.error("POST /api/cron/sync background error:", {
+        status: result.status,
+        error: (result.body as Record<string, unknown>).error ?? "unknown",
+      });
       return;
     }
     if (isDegradedSyncBody(result.body)) {
-      console.error("POST /api/cron/sync background degraded:", result.body);
+      // Log only the failures list, NOT the full body.
+      console.error("POST /api/cron/sync background degraded:", {
+        failures: (result.body as Record<string, unknown>).failures ?? [],
+      });
     }
   });
 
