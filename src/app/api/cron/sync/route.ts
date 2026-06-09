@@ -374,6 +374,18 @@ async function executeCronSync(input: {
       }
     }
 
+    function logMemory(label: string) {
+      const mem = process.memoryUsage();
+      console.error(`[cron-sync:mem] ${label}`, {
+        rss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
+        heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)} MB`,
+        external: `${Math.round(mem.external / 1024 / 1024)} MB`,
+        arrayBuffers: `${Math.round(mem.arrayBuffers / 1024 / 1024)} MB`,
+      });
+    }
+
+    logMemory("before-analytics");
     const analyticsSyncResult = await settleAsync(() =>
       runAnalyticsSync({
         prisma,
@@ -384,6 +396,7 @@ async function executeCronSync(input: {
       }),
     );
 
+    logMemory("after-analytics");
     const rulesResult = await settleAsync(() =>
       runRules({
         mode: "incremental",
@@ -393,6 +406,7 @@ async function executeCronSync(input: {
       }),
     );
 
+    logMemory("after-rules");
     // Health checks run per-user; shared with the orchestrator —
     // see src/lib/sync/health-checks.ts. The returned array preserves
     // the cron route's prior `settled.health` shape.
@@ -400,9 +414,11 @@ async function executeCronSync(input: {
       runHealthChecksSync({ prisma, userIds }),
     );
 
+    logMemory("after-health");
     const retentionResult = await settleAsync(() =>
       runRetentionMaterialization({ ownerUserId, userIds }),
     );
+    logMemory("after-retention");
 
     const settled = {
       analytics: null as unknown,
