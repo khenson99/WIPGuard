@@ -863,41 +863,84 @@ async function buildCompanyAnalyticsStats(input: {
 }): Promise<CompanyAnalyticsStats | null> {
   if (!input.context.userId) return null;
 
-  const loadedSnapshotRows = (await input.prisma.analyticsSnapshot.findMany({
-    where: {
-      ...analyticsSnapshotScopeWhere(input.context),
-      providerKey: {
-        in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
+  // Only the latest snapshot per provider is ever used here: the latest row of
+  // any status (for health/lineage) and the latest SUCCESS row (for the
+  // payload). This previously loaded the *entire* analyticsSnapshot history for
+  // the org — including the large `payload` JSON on every row — and reduced it
+  // in memory. Because new snapshot rows are written continuously (each refresh
+  // window is a new row), that load grew without bound as the table grew and
+  // drove the WIPGuard-app heap to OOM. Reduce per-provider in the database with
+  // DISTINCT ON (providerKey) so only ~one row per provider is materialized.
+  const [latestStatusRows, latestSuccessRows] = (await Promise.all([
+    input.prisma.analyticsSnapshot.findMany({
+      where: {
+        ...analyticsSnapshotScopeWhere(input.context),
+        providerKey: {
+          in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
+        },
+        capturedAt: {
+          lte: input.now,
+        },
       },
-      capturedAt: {
-        lte: input.now,
+      select: {
+        providerKey: true,
+        payload: true,
+        status: true,
+        capturedAt: true,
+        expiresAt: true,
+        lastError: true,
       },
-    },
-    select: {
-      providerKey: true,
-      payload: true,
-      status: true,
-      capturedAt: true,
-      expiresAt: true,
-      lastError: true,
-    },
-    orderBy: [{ capturedAt: "desc" }],
-  })) as AnalyticsSnapshotRow[];
-  const snapshotRows = loadedSnapshotRows.filter((snapshot) => {
-    const capturedAt = toDate(snapshot.capturedAt);
-    return capturedAt !== null && capturedAt.getTime() <= input.now.getTime();
-  });
-  const latestStatusSnapshots = latestSnapshotsByProvider(snapshotRows);
+      distinct: ["providerKey"],
+      orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+    }),
+    input.prisma.analyticsSnapshot.findMany({
+      where: {
+        ...analyticsSnapshotScopeWhere(input.context),
+        providerKey: {
+          in: [...ANALYTICS_SNAPSHOT_PROVIDER_KEYS],
+        },
+        capturedAt: {
+          lte: input.now,
+        },
+        status: "SUCCESS",
+      },
+      select: {
+        providerKey: true,
+        payload: true,
+        status: true,
+        capturedAt: true,
+        expiresAt: true,
+        lastError: true,
+      },
+      distinct: ["providerKey"],
+      orderBy: [{ providerKey: "asc" }, { capturedAt: "desc" }],
+    }),
+  ])) as [AnalyticsSnapshotRow[], AnalyticsSnapshotRow[]];
+
+  // The DB queries above already bound rows (capturedAt <= now, latest per
+  // provider, SUCCESS-only for the second set). These JS guards keep the exact
+  // original semantics and stay correct even where the where-clause isn't
+  // applied (e.g. mocked prisma in tests).
+  const latestStatusSnapshots = latestSnapshotsByProvider(
+    latestStatusRows.filter((snapshot) => {
+      const capturedAt = toDate(snapshot.capturedAt);
+      return capturedAt !== null && capturedAt.getTime() <= input.now.getTime();
+    }),
+  );
   if (latestStatusSnapshots.size === 0) return null;
   const statusSnapshotsBySource = latestSnapshotsBySource([...latestStatusSnapshots.values()]);
 
   const snapshots = latestSnapshotsByProvider(
-    snapshotRows.filter(
-      (snapshot) =>
+    latestSuccessRows.filter((snapshot) => {
+      const capturedAt = toDate(snapshot.capturedAt);
+      return (
+        capturedAt !== null &&
+        capturedAt.getTime() <= input.now.getTime() &&
         snapshot.status === "SUCCESS" &&
         snapshot.payload !== null &&
-        snapshot.payload !== undefined,
-    ),
+        snapshot.payload !== undefined
+      );
+    }),
   );
 
   const analyticsData = analyticsDataFromSnapshots(snapshots, input.now);
