@@ -9,6 +9,7 @@ import {
 } from "@/lib/integrations/catalog";
 import { IntegrationAuthError, IntegrationConfigError } from "@/lib/integrations/errors";
 import {
+  isEnvManagedTokenPlaceholder,
   protectIntegrationSecret,
   unprotectIntegrationSecret,
 } from "@/lib/integrations/token-crypto";
@@ -234,7 +235,10 @@ export async function getValidIntegrationAccessToken(input: {
     }
 
     const token = unprotectIntegrationSecret(connection.accessToken);
-    if (!token) {
+    if (!token || isEnvManagedTokenPlaceholder(token)) {
+      // Env-managed health rows store a placeholder, never a real token —
+      // surfacing it as a usable credential would send "env-managed" as a
+      // bearer token to provider APIs.
       throw new IntegrationAuthError(providerLabel(input.provider), "Access token is missing");
     }
 

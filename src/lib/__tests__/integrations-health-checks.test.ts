@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
-const mockConnections = new Map<string, { provider: string; accessToken: string; status: string }>();
+const mockConnections = new Map<string, { provider: string; accessToken: string | null; status: string }>();
 const mockUpdatedConnections = new Map<string, { status: string; lastError: string | null }>();
 const mockUpsertedConnections = new Map<string, { status: string; lastError: string | null; accessToken: string | null }>();
 const mockGetCredentials = vi.fn();
@@ -45,10 +45,15 @@ vi.mock("@/lib/prisma", () => ({
         if (mockUpdateFailureProviders.has(args.where.userId_provider.provider)) {
           throw new Error("health status write failed");
         }
-        mockUpdatedConnections.set(args.where.userId_provider.provider, {
+        const provider = args.where.userId_provider.provider;
+        mockUpdatedConnections.set(provider, {
           status: args.data.status,
           lastError: args.data.lastError,
         });
+        const existing = mockConnections.get(provider);
+        if (existing) {
+          mockConnections.set(provider, { ...existing, status: args.data.status });
+        }
         return {};
       }),
       upsert: vi.fn(async (args: {
@@ -62,6 +67,19 @@ vi.mock("@/lib/prisma", () => ({
           lastError: args.update.lastError,
           accessToken: args.create.accessToken ?? null,
         });
+        // Emulate real upsert semantics so consecutive runs observe rows
+        // persisted by earlier runs: update only mutates status on existing
+        // rows; create stores the persisted accessToken.
+        const existing = mockConnections.get(provider);
+        if (existing) {
+          mockConnections.set(provider, { ...existing, status: args.update.status });
+        } else {
+          mockConnections.set(provider, {
+            provider,
+            accessToken: args.create.accessToken ?? null,
+            status: args.create.status,
+          });
+        }
         return {};
       }),
     },
@@ -69,6 +87,10 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/integrations/token-crypto", () => ({
+  ENV_MANAGED_TOKEN_PLACEHOLDER: "env-managed",
+  isEnvManagedTokenPlaceholder: vi.fn(
+    (token: string | null | undefined) => token === "env-managed",
+  ),
   unprotectIntegrationSecret: vi.fn((token: string | null) => {
     if (!token) return null;
     return token.startsWith("enc") ? "decrypted_token" : token;
@@ -405,7 +427,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("SEMRUSH")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -430,7 +452,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("PYLON")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -456,7 +478,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("CODA")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -493,7 +515,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("STRIPE")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -530,7 +552,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("HUBSPOT")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -585,12 +607,12 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("GOOGLE_WORKSPACE")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
     expect(mockUpsertedConnections.get("SLACK")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -627,7 +649,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("MERCURY")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -686,7 +708,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("GOOGLE_ADS")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -722,7 +744,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("GOOGLE_SEARCH_CONSOLE")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -774,7 +796,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("GOOGLE_ANALYTICS")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -821,7 +843,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("META_ADS")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -874,8 +896,125 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("META_PAGE")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
+  });
+
+  it("keeps env-managed Meta Page checks passing on consecutive runs", async () => {
+    // Regression: the first run persists a META_PAGE connection row for the
+    // env-managed credential. The second run sees that row and must treat it
+    // as env-managed again — not fail with "Missing access token" because
+    // the persisted row holds no real token.
+    mockGetCredentials.mockResolvedValue({
+      metaPageAccessToken: "meta-page-env-token",
+      metaPageId: "page_123",
+    });
+    global.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/me/accounts")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "page_123", access_token: "page-scoped-token" }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.pathname.endsWith("/page_123") && !url.pathname.endsWith("/page_123/posts")) {
+        return new Response(JSON.stringify({ fan_count: 10, followers_count: 12 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof global.fetch;
+
+    const { runIntegrationHealthChecks } = await import("@/lib/integrations/health-checks");
+
+    const firstRun = await runIntegrationHealthChecks({ userId: "user_1" });
+    expect(firstRun.failed).toBe(0);
+    // The first run persisted a row without a real token.
+    expect(mockConnections.get("META_PAGE")).toEqual({
+      provider: "META_PAGE",
+      accessToken: null,
+      status: "CONNECTED",
+    });
+
+    const secondRun = await runIntegrationHealthChecks({ userId: "user_1" });
+    expect(secondRun.checked).toBe(1);
+    expect(secondRun.failed).toBe(0);
+    expect(secondRun.results).toEqual([
+      {
+        provider: "META_PAGE",
+        ok: true,
+        message: null,
+      },
+    ]);
+    expect(mockConnections.get("META_PAGE")).toEqual({
+      provider: "META_PAGE",
+      accessToken: null,
+      status: "CONNECTED",
+    });
+  });
+
+  it("recovers env-managed Meta rows previously poisoned by placeholder persistence", async () => {
+    // Regression: rows persisted by earlier (buggy) runs — META_PAGE with the
+    // literal "env-managed" accessToken and META_ADS with a NULL accessToken
+    // (a discovery stub flipped by health persistence) — must be re-checked
+    // through env credentials and healed, not fail the missing-token gate.
+    mockConnections.set("META_ADS", {
+      provider: "META_ADS",
+      accessToken: null,
+      status: "ERROR",
+    });
+    mockConnections.set("META_PAGE", {
+      provider: "META_PAGE",
+      accessToken: "env-managed",
+      status: "ERROR",
+    });
+    mockGetCredentials.mockResolvedValue({
+      metaAdsAccessToken: "meta-env-token",
+      metaAdAccountId: "act_12345",
+      metaPageAccessToken: "meta-env-token",
+      metaPageId: "page_123",
+    });
+    global.fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/act_12345/insights")) {
+        return new Response(
+          JSON.stringify({ data: [{ spend: "0", impressions: "0", clicks: "0" }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.pathname.endsWith("/me/accounts")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "page_123", access_token: "page-scoped-token" }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.pathname.endsWith("/page_123") && !url.pathname.endsWith("/page_123/posts")) {
+        return new Response(JSON.stringify({ fan_count: 10, followers_count: 12 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof global.fetch;
+
+    const { runIntegrationHealthChecks } = await import("@/lib/integrations/health-checks");
+    const result = await runIntegrationHealthChecks({ userId: "user_1" });
+
+    expect(result.checked).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.results.map((entry) => entry.provider).sort()).toEqual([
+      "META_ADS",
+      "META_PAGE",
+    ]);
+    expect(mockConnections.get("META_ADS")?.status).toBe("CONNECTED");
+    expect(mockConnections.get("META_PAGE")?.status).toBe("CONNECTED");
   });
 
   it("checks env-managed Meta Instagram credentials without requiring a Page ID", async () => {
@@ -933,7 +1072,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("META_PAGE")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -971,7 +1110,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("WEBFLOW")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 
@@ -1032,7 +1171,7 @@ describe("runIntegrationHealthChecks (extended)", () => {
     expect(mockUpsertedConnections.get("REDDIT")).toEqual({
       status: "CONNECTED",
       lastError: null,
-      accessToken: "env-managed",
+      accessToken: null,
     });
   });
 

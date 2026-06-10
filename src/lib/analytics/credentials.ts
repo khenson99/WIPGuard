@@ -22,6 +22,7 @@ import { listProviderRegistryEntries } from "@/lib/integrations/provider-registr
 import { validateIntegrationScopes } from "@/lib/integrations/scope-validation";
 import { prisma } from "@/lib/prisma";
 import {
+  isEnvManagedTokenPlaceholder,
   protectIntegrationSecret,
   unprotectIntegrationSecret,
 } from "@/lib/integrations/token-crypto";
@@ -244,6 +245,38 @@ function metadataString(metadata: unknown, key: string): string | null {
 
 function hasValue(value: string | null): boolean {
   return Boolean(value && value.trim().length > 0);
+}
+
+/**
+ * Returns the stored secret only when it is a real credential. Health checks
+ * persist placeholder rows for env-managed credentials (accessToken
+ * "env-managed", or no token at all); those hold nothing usable.
+ */
+function realConnectionSecret(value: string | null): string | null {
+  const secret = unprotectIntegrationSecret(value);
+  if (!secret || isEnvManagedTokenPlaceholder(secret)) {
+    return null;
+  }
+  return secret;
+}
+
+/**
+ * A connection row should take precedence over an env credential only when a
+ * user actually connected the integration, i.e. the row is not DISCONNECTED
+ * and holds a real secret. Placeholder rows persisted by env-managed health
+ * checks (status CONNECTED/ERROR but no real token) must NOT disable the env
+ * fallback — otherwise the first persisted health status starves every later
+ * check of the credential it was monitoring, a self-perpetuating ERROR.
+ */
+function connectionBlocksEnvFallback(
+  connection: ConnectionRecord | null,
+  secretField: "accessToken" | "refreshToken" = "accessToken"
+): connection is ConnectionRecord {
+  return Boolean(
+    connection &&
+      connection.status !== IntegrationConnectionStatus.DISCONNECTED &&
+      realConnectionSecret(connection[secretField])
+  );
 }
 
 function looksInvalidMetaInstagramAccountId(value: string | null): boolean {
@@ -741,7 +774,14 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
           return;
         }
 
-        const hasAccessToken = Boolean(unprotectIntegrationSecret(connection.accessToken));
+        const hasAccessToken = Boolean(realConnectionSecret(connection.accessToken));
+        const hasRefreshSecret = Boolean(realConnectionSecret(connection.refreshToken));
+        if (!hasAccessToken && !hasRefreshSecret) {
+          // Placeholder rows persisted by env-managed health checks hold no
+          // secret to refresh; attempting would just persist a bogus
+          // "Missing ... token" ERROR on every credentials lookup.
+          return;
+        }
         const expiresAtMs = connection.expiresAt?.getTime() ?? null;
         const refreshMarginMs =
           provider === IntegrationProvider.META_ADS ? META_REFRESH_MARGIN_MS : REFRESH_MARGIN_MS;
@@ -824,32 +864,26 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
     getIntegrationEnvValue("GOOGLE_SEARCH_CONSOLE_SITE_URL")
   );
 
-  const hubspotToken =
-    hubspotConnection && hubspotConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: hubspotConnection.userId,
-          provider: IntegrationProvider.HUBSPOT,
-        }).catch(() => null)
-      : envHubspot;
-  const usingHubspotEnvFallback =
-    Boolean(envHubspot) &&
-    (!hubspotConnection || hubspotConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const hubspotBlocksEnv = connectionBlocksEnvFallback(hubspotConnection);
+  const hubspotToken = hubspotBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: hubspotConnection.userId,
+        provider: IntegrationProvider.HUBSPOT,
+      }).catch(() => null)
+    : envHubspot;
+  const usingHubspotEnvFallback = Boolean(envHubspot) && !hubspotBlocksEnv;
 
-  const codaApiToken =
-    codaConnection && codaConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(codaConnection.accessToken)
-      : envCoda;
-  const usingCodaEnvFallback =
-    Boolean(envCoda) &&
-    (!codaConnection || codaConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const codaBlocksEnv = connectionBlocksEnvFallback(codaConnection);
+  const codaApiToken = codaBlocksEnv
+    ? unprotectIntegrationSecret(codaConnection.accessToken)
+    : envCoda;
+  const usingCodaEnvFallback = Boolean(envCoda) && !codaBlocksEnv;
 
-  const redditRefreshToken =
-    redditConnection && redditConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(redditConnection.refreshToken)
-      : envRedditRefresh;
-  const usingRedditEnvFallback =
-    Boolean(envRedditRefresh) &&
-    (!redditConnection || redditConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const redditBlocksEnv = connectionBlocksEnvFallback(redditConnection, "refreshToken");
+  const redditRefreshToken = redditBlocksEnv
+    ? unprotectIntegrationSecret(redditConnection.refreshToken)
+    : envRedditRefresh;
+  const usingRedditEnvFallback = Boolean(envRedditRefresh) && !redditBlocksEnv;
 
   const googleWorkspaceAccessToken =
     googleWorkspaceConnection?.status === IntegrationConnectionStatus.CONNECTED
@@ -864,43 +898,37 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       ? unprotectIntegrationSecret(slackConnection.accessToken)
       : null;
 
-  const stripeKey =
-    stripeConnection && stripeConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: stripeConnection.userId,
-          provider: IntegrationProvider.STRIPE,
-        }).catch(() => null)
-      : envStripe;
-  const usingStripeEnvFallback =
-    Boolean(envStripe) &&
-    (!stripeConnection || stripeConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const stripeBlocksEnv = connectionBlocksEnvFallback(stripeConnection);
+  const stripeKey = stripeBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: stripeConnection.userId,
+        provider: IntegrationProvider.STRIPE,
+      }).catch(() => null)
+    : envStripe;
+  const usingStripeEnvFallback = Boolean(envStripe) && !stripeBlocksEnv;
 
-  const mercuryKey =
-    mercuryConnection && mercuryConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: mercuryConnection.userId,
-          provider: IntegrationProvider.MERCURY,
-        }).catch(() => null)
-      : envMercury;
-  const usingMercuryEnvFallback =
-    Boolean(envMercury) &&
-    (!mercuryConnection || mercuryConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const mercuryBlocksEnv = connectionBlocksEnvFallback(mercuryConnection);
+  const mercuryKey = mercuryBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: mercuryConnection.userId,
+        provider: IntegrationProvider.MERCURY,
+      }).catch(() => null)
+    : envMercury;
+  const usingMercuryEnvFallback = Boolean(envMercury) && !mercuryBlocksEnv;
 
-  const webflowApiToken =
-    webflowConnection && webflowConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: webflowConnection.userId,
-          provider: IntegrationProvider.WEBFLOW,
-        }).catch(() => null)
-      : envWebflowToken;
-  const usingWebflowEnvFallback =
-    Boolean(envWebflowToken) &&
-    (!webflowConnection || webflowConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const webflowBlocksEnv = connectionBlocksEnvFallback(webflowConnection);
+  const webflowApiToken = webflowBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: webflowConnection.userId,
+        provider: IntegrationProvider.WEBFLOW,
+      }).catch(() => null)
+    : envWebflowToken;
+  const usingWebflowEnvFallback = Boolean(envWebflowToken) && !webflowBlocksEnv;
 
   const webflowSiteId =
-    (webflowConnection && webflowConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? metadataString(webflowConnection?.metadata, "siteId") ??
-        metadataString(webflowConnection?.metadata, "defaultSiteId")
+    (webflowBlocksEnv
+      ? metadataString(webflowConnection.metadata, "siteId") ??
+        metadataString(webflowConnection.metadata, "defaultSiteId")
       : null) ?? envWebflowSiteId;
 
   const googleAdsConnectionRefreshToken =
@@ -913,24 +941,22 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const usingGoogleAdsEnvFallback =
     !googleAdsConnectionRefreshToken && envGoogleAdsReady();
 
-  const metaAccessTokenFromAds =
-    metaAdsConnection && metaAdsConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: metaAdsConnection.userId,
-          provider: IntegrationProvider.META_ADS,
-        }).catch(() => null)
-      : null;
-  const metaAccessTokenFromPage =
-    metaPageConnection && metaPageConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? await getValidIntegrationAccessToken({
-          userId: metaPageConnection.userId,
-          provider: IntegrationProvider.META_PAGE,
-        }).catch(() => null)
-      : null;
+  const metaAdsBlocksEnv = connectionBlocksEnvFallback(metaAdsConnection);
+  const metaPageBlocksEnv = connectionBlocksEnvFallback(metaPageConnection);
+  const metaAccessTokenFromAds = metaAdsBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: metaAdsConnection.userId,
+        provider: IntegrationProvider.META_ADS,
+      }).catch(() => null)
+    : null;
+  const metaAccessTokenFromPage = metaPageBlocksEnv
+    ? await getValidIntegrationAccessToken({
+        userId: metaPageConnection.userId,
+        provider: IntegrationProvider.META_PAGE,
+      }).catch(() => null)
+    : null;
   const usingMetaEnvFallback =
-    Boolean(envMetaAccessToken) &&
-    (!metaAdsConnection || metaAdsConnection.status === IntegrationConnectionStatus.DISCONNECTED) &&
-    (!metaPageConnection || metaPageConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+    Boolean(envMetaAccessToken) && !metaAdsBlocksEnv && !metaPageBlocksEnv;
   const metaEnvAccessToken = usingMetaEnvFallback ? envMetaAccessToken : null;
   const metaAdsAccessToken = metaAccessTokenFromAds ?? metaEnvAccessToken;
   const metaPageAccessToken =
@@ -1058,75 +1084,67 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   }
 
 
-  const pylonApiKey =
-    pylonConnection && pylonConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(pylonConnection.accessToken)
-      : envPylonApiKey;
-  const usingPylonEnvFallback =
-    hasValue(envPylonApiKey) &&
-    (!pylonConnection || pylonConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const pylonBlocksEnv = connectionBlocksEnvFallback(pylonConnection);
+  const pylonApiKey = pylonBlocksEnv
+    ? unprotectIntegrationSecret(pylonConnection.accessToken)
+    : envPylonApiKey;
+  const usingPylonEnvFallback = hasValue(envPylonApiKey) && !pylonBlocksEnv;
 
   const pylonBaseUrl =
     metadataString(pylonConnection?.metadata, "baseUrl") ?? envPylonBaseUrl;
 
-  const semrushApiToken =
-    semrushConnection && semrushConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(semrushConnection.accessToken)
-      : envSemrushApiToken;
+  const semrushBlocksEnv = connectionBlocksEnvFallback(semrushConnection);
+  const semrushApiToken = semrushBlocksEnv
+    ? unprotectIntegrationSecret(semrushConnection.accessToken)
+    : envSemrushApiToken;
   const semrushDomain =
     metadataString(semrushConnection?.metadata, "domain") ?? envSemrushDomain;
   const usingSemrushEnvFallback =
-    hasValue(envSemrushApiToken) &&
-    hasValue(envSemrushDomain) &&
-    (!semrushConnection || semrushConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+    hasValue(envSemrushApiToken) && hasValue(envSemrushDomain) && !semrushBlocksEnv;
 
-  const posthogApiKey =
-    posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(posthogConnection.accessToken)
-      : envPosthogApiKey;
+  const posthogBlocksEnv = connectionBlocksEnvFallback(posthogConnection);
+  const posthogApiKey = posthogBlocksEnv
+    ? unprotectIntegrationSecret(posthogConnection.accessToken)
+    : envPosthogApiKey;
   const posthogProjectId =
-    (posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    (posthogBlocksEnv
       ? metadataString(posthogConnection.metadata, "projectId") ??
         metadataString(posthogConnection.metadata, "defaultProjectId")
       : null) ?? envPosthogProjectId;
   const posthogHost =
-    (posthogConnection && posthogConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    (posthogBlocksEnv
       ? metadataString(posthogConnection.metadata, "host") ??
         metadataString(posthogConnection.metadata, "apiHost")
       : null) ?? envPosthogHost;
   const usingPosthogEnvFallback =
-    Boolean(envPosthogApiKey && envPosthogProjectId) &&
-    (!posthogConnection || posthogConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+    Boolean(envPosthogApiKey && envPosthogProjectId) && !posthogBlocksEnv;
 
-  const linearApiKey =
-    linearConnection && linearConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(linearConnection.accessToken)
-      : envLinearApiKey;
-  const usingLinearEnvFallback =
-    Boolean(envLinearApiKey) &&
-    (!linearConnection || linearConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const linearBlocksEnv = connectionBlocksEnvFallback(linearConnection);
+  const linearApiKey = linearBlocksEnv
+    ? unprotectIntegrationSecret(linearConnection.accessToken)
+    : envLinearApiKey;
+  const usingLinearEnvFallback = Boolean(envLinearApiKey) && !linearBlocksEnv;
 
-  const githubToken =
-    githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
-      ? unprotectIntegrationSecret(githubConnection.accessToken)
-      : envGithubToken;
+  const githubBlocksEnv = connectionBlocksEnvFallback(githubConnection);
+  const githubToken = githubBlocksEnv
+    ? unprotectIntegrationSecret(githubConnection.accessToken)
+    : envGithubToken;
   const githubOwner =
-    (githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    (githubBlocksEnv
       ? metadataString(githubConnection.metadata, "owner") ??
         metadataString(githubConnection.metadata, "repoOwner")
       : null) ?? envGithubOwner;
   const githubRepo =
-    (githubConnection && githubConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+    (githubBlocksEnv
       ? metadataString(githubConnection.metadata, "repo") ??
         metadataString(githubConnection.metadata, "repoName")
       : null) ?? envGithubRepo;
   const usingGithubEnvFallback =
-    Boolean(envGithubToken && envGithubOwner && envGithubRepo) &&
-    (!githubConnection || githubConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+    Boolean(envGithubToken && envGithubOwner && envGithubRepo) && !githubBlocksEnv;
 
   const usingUnifyEnvFallback =
     Boolean(envUnifyApiKey && envOrNull(process.env.UNIFY_FUNNEL_OBJECT_NAME)) &&
-    (!unifyConnection || unifyConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+    !connectionBlocksEnvFallback(unifyConnection);
 
   const freshness: Record<IntegrationProvider, ProviderFreshnessSnapshot> = {
     [IntegrationProvider.GOOGLE_WORKSPACE]: buildFreshness(

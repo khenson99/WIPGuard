@@ -1,6 +1,10 @@
 import { IntegrationConnectionStatus, IntegrationProvider } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
+import {
+  ENV_MANAGED_TOKEN_PLACEHOLDER,
+  isEnvManagedTokenPlaceholder,
+  unprotectIntegrationSecret,
+} from "@/lib/integrations/token-crypto";
 import { verifyCodaApiToken, verifyPylonApiToken } from "@/lib/integrations/oauth";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import {
@@ -582,7 +586,12 @@ async function persistConnectionHealth(input: {
     userId: input.userId,
     provider: input.provider,
     status: input.status,
-    accessToken: input.accessToken ?? null,
+    // Never persist the in-memory env-managed placeholder: a stored
+    // non-null accessToken reads as a real credential and would shadow the
+    // env fallback in credential resolution.
+    accessToken: isEnvManagedTokenPlaceholder(input.accessToken)
+      ? null
+      : input.accessToken ?? null,
     lastError: input.lastError,
     lastSyncedAt: input.lastSyncedAt,
   };
@@ -644,13 +653,41 @@ function isMissingConnectionUpdateError(error: unknown): boolean {
   );
 }
 
+const ENV_MANAGED_HEALTH_PROVIDER_SET = new Set<IntegrationProvider>(
+  ENV_MANAGED_HEALTH_PROVIDERS,
+);
+
+function holdsRealAccessToken(accessToken: string | null): boolean {
+  const token = unprotectIntegrationSecret(accessToken);
+  return Boolean(token) && !isEnvManagedTokenPlaceholder(token);
+}
+
 function addEnvManagedHealthConnections(input: {
   userId: string;
   connections: HealthConnection[];
   credentials: AnalyticsCredentials;
 }): HealthConnection[] {
-  const providers = new Set(input.connections.map((connection) => connection.provider));
-  const connections = [...input.connections];
+  // Existing rows that hold no real secret (placeholder rows persisted by a
+  // previous env-managed run, or stubs created by metadata discovery) are
+  // health-checked through env credentials, exactly like providers with no
+  // row at all. Without this, the row persisted by the first run would fail
+  // the "Missing access token" gate on every later run.
+  const connections: HealthConnection[] = input.connections.map((connection) => {
+    if (
+      !holdsRealAccessToken(connection.accessToken) &&
+      ENV_MANAGED_HEALTH_PROVIDER_SET.has(connection.provider) &&
+      hasIntegrationCredential(connection.provider, input.credentials)
+    ) {
+      return {
+        ...connection,
+        accessToken: ENV_MANAGED_TOKEN_PLACEHOLDER,
+        envManaged: true,
+      };
+    }
+    return connection;
+  });
+
+  const providers = new Set(connections.map((connection) => connection.provider));
 
   for (const provider of ENV_MANAGED_HEALTH_PROVIDERS) {
     if (providers.has(provider)) {
@@ -662,7 +699,7 @@ function addEnvManagedHealthConnections(input: {
     connections.push({
       userId: input.userId,
       provider,
-      accessToken: "env-managed",
+      accessToken: ENV_MANAGED_TOKEN_PLACEHOLDER,
       envManaged: true,
     });
     providers.add(provider);
