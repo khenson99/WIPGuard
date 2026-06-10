@@ -1,6 +1,11 @@
 import { REQUIRED_IMLADRIS_PROVIDERS, IMLADRIS_METRIC_DEFINITIONS, getImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import type { ImladrisProviderKey } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
+import {
+  buildDerivedImladrisMetricRows,
+  extractImladrisScalar,
+  type DerivedMetricInput,
+} from "@/lib/imladris/derived-metrics";
 import { getImladrisHistoricalWindow } from "@/lib/imladris/ingestion";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
@@ -157,6 +162,16 @@ function addHours(date: Date, hours: number): Date {
 
 function ageHours(from: Date, to: Date): number {
   return (to.getTime() - from.getTime()) / (60 * 60 * 1000);
+}
+
+function canonicalMonthKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function previousMonthKey(date: Date): string {
+  return canonicalMonthKey(
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1)),
+  );
 }
 
 function normalizeTenantId(value: string | null | undefined): string | null {
@@ -1559,7 +1574,22 @@ export async function buildImladrisMetrics(input: {
     }
   }
 
-  return IMLADRIS_METRIC_DEFINITIONS.map((definition) => {
+  // Best-scoped row for the calendar month immediately before each metric's
+  // current period (derived metrics use it for period-over-period deltas).
+  const previousCanonicalByMetricKey = new Map<string, CanonicalMetricRow>();
+  for (const row of sortedCanonicalRows) {
+    if (previousCanonicalByMetricKey.has(row.metricKey)) continue;
+    if (!canonicalMetricAvailableAt(row, now)) continue;
+    if (!canonicalMetricMatchesContext(row, context)) continue;
+    const current = canonicalByMetricKey.get(row.metricKey);
+    const currentPeriodEnd = current ? toDate(current.periodEnd) : null;
+    const rowPeriodEnd = toDate(row.periodEnd);
+    if (!currentPeriodEnd || !rowPeriodEnd) continue;
+    if (canonicalMonthKey(rowPeriodEnd) !== previousMonthKey(currentPeriodEnd)) continue;
+    previousCanonicalByMetricKey.set(row.metricKey, row);
+  }
+
+  const baseMetrics = IMLADRIS_METRIC_DEFINITIONS.map((definition) => {
     const canonicalRow = canonicalByMetricKey.get(definition.key);
     const storedStatus = canonicalRow
       ? canonicalStatus(canonicalRow.status)
@@ -1625,6 +1655,28 @@ export async function buildImladrisMetrics(input: {
       warnings,
     };
   });
+
+  const derivedInputsByKey = new Map<string, DerivedMetricInput>(
+    baseMetrics.map((metric) => [
+      metric.key,
+      {
+        key: metric.key,
+        status: metric.status,
+        confidence: metric.confidence,
+        value: extractImladrisScalar(canonicalByMetricKey.get(metric.key)?.value),
+        previousValue: extractImladrisScalar(previousCanonicalByMetricKey.get(metric.key)?.value),
+        periodStart: metric.periodStart,
+        periodEnd: metric.periodEnd,
+        computedAt: metric.computedAt,
+      },
+    ]),
+  );
+  const derivedMetrics = buildDerivedImladrisMetricRows({
+    inputsByKey: derivedInputsByKey,
+    sourceStatuses,
+  });
+
+  return [...baseMetrics, ...derivedMetrics];
 }
 
 export async function buildImladrisDashboard(input: {

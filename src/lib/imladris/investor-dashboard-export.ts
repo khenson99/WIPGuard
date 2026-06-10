@@ -1,10 +1,12 @@
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
-import { getImladrisDashboardDefinition } from "@/lib/imladris/catalog";
+import { getImladrisDashboardDefinition, getImladrisDerivedMetricDefinition } from "@/lib/imladris/catalog";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import { normalizeImladrisObjectType } from "@/lib/imladris/object-types";
 import type { PrismaClientType } from "@/lib/prisma";
 
-const INVESTOR_METRIC_KEYS = getImladrisDashboardDefinition("company")?.metricKeys ?? [
+// Derived metrics are computed on read and never materialized as canonical
+// rows, so this export (which reads canonical rows directly) excludes them.
+const INVESTOR_METRIC_KEYS = (getImladrisDashboardDefinition("company")?.metricKeys ?? [
   "revenue.mrr",
   "revenue.arr",
   "revenue.subscription_revenue",
@@ -27,7 +29,7 @@ const INVESTOR_METRIC_KEYS = getImladrisDashboardDefinition("company")?.metricKe
   "customer_success.churn_rate",
   "customer_success.retention_rate",
   "customer_success.retention_risk",
-];
+]).filter((key) => getImladrisDerivedMetricDefinition(key) === null);
 const EXPORT_SOURCE = "imladris-investor-dashboard-export";
 const EXPORT_SCHEMA_VERSION = 1;
 const RAW_PROVIDERS = [

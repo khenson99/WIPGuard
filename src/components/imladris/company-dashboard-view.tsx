@@ -208,8 +208,10 @@ function CompanyHeadline({
 // ---- Board pacing strip (goal vs actual bullets) ----
 const BOARD_PACING_KEYS = [
   "revenue.arr",
+  "company.healthy_arr_growth",
   "finance.cash_runway_months",
   "finance.net_burn",
+  "finance.burn_multiple",
   "customer_success.retention_rate",
 ];
 

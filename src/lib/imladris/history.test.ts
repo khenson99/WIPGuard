@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildImladrisMetricHistory } from "@/lib/imladris/history";
-import { IMLADRIS_METRIC_DEFINITIONS } from "@/lib/imladris/catalog";
+import {
+  IMLADRIS_DERIVED_METRIC_DEFINITIONS,
+  IMLADRIS_METRIC_DEFINITIONS,
+} from "@/lib/imladris/catalog";
 
 const CONTEXT = {
   userId: "user_1",
@@ -72,8 +75,36 @@ describe("buildImladrisMetricHistory", () => {
       expect(metric.points).toHaveLength(history.months.length);
       expect(metric.points.map((p) => p.month)).toEqual(history.months);
     }
-    // one series per catalog definition
-    expect(history.metrics).toHaveLength(IMLADRIS_METRIC_DEFINITIONS.length);
+    // one series per catalog definition, plus the derived metric series
+    expect(history.metrics).toHaveLength(
+      IMLADRIS_METRIC_DEFINITIONS.length + IMLADRIS_DERIVED_METRIC_DEFINITIONS.length,
+    );
+  });
+
+  it("computes derived series (net-new ARR, growth, burn multiple) from base series", async () => {
+    const prisma = prismaMock([
+      metricRow({ metricKey: "revenue.arr", value: { amount: 1_200_000 }, periodEnd: periodEndFor(0) }),
+      metricRow({ metricKey: "revenue.arr", value: { amount: 1_100_000 }, status: "STALE", confidence: 0.6, periodEnd: periodEndFor(1) }),
+      metricRow({ metricKey: "finance.net_burn", value: { amount: 150_000 }, periodEnd: periodEndFor(0) }),
+    ]);
+
+    const history = await buildImladrisMetricHistory({ prisma, context: CONTEXT, months: 13 });
+    const currentMonth = monthKeyFor(0);
+
+    const netNew = history.metrics.find((m) => m.key === "revenue.net_new_arr")!;
+    const netNewPoint = netNew.points.find((p) => p.month === currentMonth)!;
+    expect(netNewPoint.value).toBe(100_000);
+    // status degrades to the worst input (prior-month ARR is stale)
+    expect(netNewPoint.status).toBe("STALE");
+    expect(netNewPoint.confidence).toBe(0.6);
+    // months without a prior ARR value have no derived point
+    expect(netNew.points.find((p) => p.month === monthKeyFor(1))!.value).toBeNull();
+
+    const growth = history.metrics.find((m) => m.key === "revenue.arr_growth_rate")!;
+    expect(growth.points.find((p) => p.month === currentMonth)!.value).toBeCloseTo(9.09, 2);
+
+    const burnMultiple = history.metrics.find((m) => m.key === "finance.burn_multiple")!;
+    expect(burnMultiple.points.find((p) => p.month === currentMonth)!.value).toBe(1.5);
   });
 
   it("maps a metric's rows into the correct month buckets with value, status, and confidence", async () => {

@@ -29,6 +29,10 @@ function createPrismaClient(connectionString: string) {
     max: maxPoolSize,
     idleTimeoutMillis,
     connectionTimeoutMillis,
+    // TCP keepalive so proxies/NAT (e.g. Railway's public Postgres proxy)
+    // don't silently kill pooled sockets — surfaces otherwise as
+    // "Connection terminated unexpectedly" on the next query.
+    keepAlive: true,
   });
 
   // Attach pool monitoring
