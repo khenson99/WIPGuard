@@ -128,8 +128,14 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   );
 }
 
-// Dev credentials provider — lets you sign in as any seeded user by email
-if (process.env.NODE_ENV !== "production" || process.env.E2E_MODE === "true") {
+// Dev credentials provider — lets you sign in as any seeded user by email.
+// Allowlisted environments only: a misconfigured NODE_ENV (unset, "staging",
+// or an accidental override on the host) must never enable this in production.
+const DEV_LOGIN_ENVIRONMENTS = ["development", "test"];
+if (
+  DEV_LOGIN_ENVIRONMENTS.includes(process.env.NODE_ENV ?? "") ||
+  process.env.E2E_MODE === "true"
+) {
   providers.push(
     CredentialsProvider({
       name: "Dev Login",
@@ -167,7 +173,9 @@ export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: createResilientAdapter() as any,
   providers,
-  debug: process.env.NODE_ENV !== "production",
+  // Opt-in only: next-auth's debug output dumps the full provider config —
+  // including the OAuth client secret — into server logs.
+  debug: process.env.NEXTAUTH_DEBUG === "true",
   logger: {
     error(code, metadata) {
       console.error("[next-auth][error]", code, metadata);

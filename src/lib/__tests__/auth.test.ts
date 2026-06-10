@@ -110,6 +110,26 @@ describe("auth options", () => {
     expect(credentialsProvider).toBeTruthy();
   });
 
+  it("excludes the dev credentials provider for non-allowlisted environments", async () => {
+    // A stray NODE_ENV override on the host (unset, "staging", etc.) must not
+    // enable the passwordless dev login.
+    vi.resetModules();
+    const mutableEnv = process.env as Record<string, string | undefined>;
+    mutableEnv.NODE_ENV = "staging";
+    mutableEnv.E2E_MODE = "false";
+    const { authOptions } = await import("@/lib/auth");
+    mutableEnv.NODE_ENV = "test";
+
+    expect(
+      authOptions.providers?.find((provider) => provider.id === "credentials"),
+    ).toBeUndefined();
+  });
+
+  it("keeps next-auth debug logging opt-in so provider secrets stay out of logs", async () => {
+    const authOptions = await loadAuthOptions();
+    expect(authOptions.debug).toBe(false);
+  });
+
   it("bootstraps a development organization for credential logins without one", async () => {
     const authOptions = await loadAuthOptions();
     const credentialsProvider = authOptions.providers?.find(
