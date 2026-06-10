@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import {
   CANONICAL_DEPARTMENTS,
+  IMLADRIS_DERIVED_METRIC_DEFINITIONS,
   IMLADRIS_METRIC_DEFINITIONS,
   REQUIRED_IMLADRIS_PROVIDERS,
+  derivedMetricSourceKeys,
   getImladrisDashboardDefinition,
 } from "@/lib/imladris/catalog";
 import { getProviderRegistryEntry } from "@/lib/integrations/provider-registry";
@@ -88,6 +90,11 @@ describe("Imladris catalog", () => {
       "customer_success.churn_rate",
       "customer_success.retention_rate",
       "customer_success.retention_risk",
+      "company.healthy_arr_growth",
+      "revenue.net_new_arr",
+      "revenue.arr_growth_rate",
+      "finance.burn_multiple",
+      "revenue.arpa",
     ]);
 
     const development = getImladrisDashboardDefinition("development");
@@ -133,8 +140,36 @@ describe("Imladris catalog", () => {
         "customer_success.churn_rate",
         "customer_success.retention_rate",
         "customer_success.retention_risk",
+        "company.healthy_arr_growth",
+        "revenue.net_new_arr",
+        "revenue.arr_growth_rate",
+        "finance.burn_multiple",
+        "revenue.arpa",
       ],
     });
+  });
+
+  it("defines derived metrics from canonical inputs with deterministic formulas", () => {
+    expect(IMLADRIS_DERIVED_METRIC_DEFINITIONS.map((metric) => metric.key)).toEqual([
+      "revenue.net_new_arr",
+      "revenue.arr_growth_rate",
+      "finance.burn_multiple",
+      "revenue.arpa",
+      "company.healthy_arr_growth",
+    ]);
+
+    const canonicalKeys = new Set(IMLADRIS_METRIC_DEFINITIONS.map((metric) => metric.key));
+    for (const metric of IMLADRIS_DERIVED_METRIC_DEFINITIONS) {
+      expect(metric.inputs.length).toBeGreaterThan(0);
+      for (const input of metric.inputs) {
+        expect(canonicalKeys.has(input)).toBe(true);
+      }
+      expect(metric.formula.length).toBeGreaterThan(0);
+      // Derived metrics never have their own materialized canonical rows.
+      expect(canonicalKeys.has(metric.key)).toBe(false);
+      // Provider dependencies come from the union of the inputs' sources.
+      expect(derivedMetricSourceKeys(metric).length).toBeGreaterThan(0);
+    }
   });
 
   it("declares units that match canonical metric values", () => {

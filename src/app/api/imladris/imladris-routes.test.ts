@@ -126,6 +126,13 @@ describe("Imladris API routes", () => {
     expect(payload.metrics.map((metric: { key: string }) => metric.key)).not.toContain(
       "ceo.throughput_30d",
     );
+    // derived metrics ride along with the canonical ones
+    expect(payload.metrics.map((metric: { key: string }) => metric.key)).toContain(
+      "company.healthy_arr_growth",
+    );
+    expect(payload.metrics.map((metric: { key: string }) => metric.key)).toContain(
+      "finance.burn_multiple",
+    );
   });
 
   it("serves operating and department dashboards from canonical metric definitions", async () => {

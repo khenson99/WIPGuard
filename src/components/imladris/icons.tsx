@@ -77,6 +77,11 @@ const METRIC_ICON: Record<string, string> = {
   "customer_success.churn_rate": "trending-down",
   "customer_success.retention_rate": "shield-check",
   "customer_success.retention_risk": "alert",
+  "company.healthy_arr_growth": "gauge",
+  "revenue.net_new_arr": "trending-up",
+  "revenue.arr_growth_rate": "percent",
+  "finance.burn_multiple": "flame",
+  "revenue.arpa": "dollar",
 };
 
 export function metricIconName(key: string): string {

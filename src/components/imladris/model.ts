@@ -320,6 +320,43 @@ function seedMetrics(): SeedMetric[] {
       status: "ready", confidence: 0.83, sources: ["pylon", "posthog", "slack", "googleWorkspace", "stripe"],
       narrative: "Risk index of 24/100. 11 accounts flagged; declining product usage is the leading predictor this quarter.",
     },
+    // ---- derived metrics (computed from canonical metrics; calc version derived.v1) ----
+    {
+      key: "company.healthy_arr_growth", label: "Healthy ARR growth", dept: "operating", unit: "score", good: "up",
+      value: 66, history: hist(66, 0.006, 0.025, 241), target: 75, targetLabel: "75 / 100",
+      status: "ready", confidence: 0.89, sources: ["stripe", "hubspot", "mercury", "posthog"],
+      breakdown: { label: "Score components", parts: [
+        { label: "ARR growth", value: 14.7 },
+        { label: "Burn efficiency", value: 21.5 },
+        { label: "Retention (NRR)", value: 14.9 },
+        { label: "Runway", value: 15 },
+      ] },
+      narrative: "Composite health of 66/100. Burn efficiency and runway are strong; 5.5% MoM growth and 111% NRR are the levers to push toward the 75 target.",
+    },
+    {
+      key: "revenue.net_new_arr", label: "Net-new ARR", dept: "finance", unit: "currency", good: "up",
+      value: 221_000, history: hist(221_000, 0.05, 0.12, 251), target: 250_000, targetLabel: "$250k/mo",
+      status: "ready", confidence: 0.96, sources: ["stripe", "hubspot"],
+      narrative: "ARR(t) − ARR(t−1): $221k added this month. New + expansion outpaced churn for the eighth straight month.",
+    },
+    {
+      key: "revenue.arr_growth_rate", label: "ARR growth (MoM)", dept: "finance", unit: "percent", good: "up",
+      value: 5.5, history: hist(5.5, 0.004, 0.08, 261), target: 6, targetLabel: "6% MoM",
+      status: "ready", confidence: 0.96, sources: ["stripe", "hubspot"],
+      narrative: "5.5% month-over-month ARR growth, just under the 6% plan pace needed to reach $5.0m by EOY.",
+    },
+    {
+      key: "finance.burn_multiple", label: "Burn multiple", dept: "finance", unit: "ratio", good: "down",
+      value: 1.42, history: hist(1.42, -0.004, 0.08, 271), target: 1.5, targetLabel: "<1.5x",
+      status: "ready", confidence: 0.94, sources: ["mercury", "stripe", "hubspot"],
+      narrative: "$1.42 of net burn per dollar of net-new ARR — inside the 1.5x efficiency bar, but the burn spike this month narrows the margin.",
+    },
+    {
+      key: "revenue.arpa", label: "ARPA", dept: "finance", unit: "currency", good: "up",
+      value: 2_486, history: hist(2_486, 0.018, 0.02, 281), target: null,
+      status: "ready", confidence: 0.97, sources: ["stripe", "hubspot"],
+      narrative: "MRR ÷ customers: $2,486 average recurring revenue per account, rising as enterprise mix grows.",
+    },
   ];
 }
 
@@ -464,29 +501,30 @@ function buildCohorts(metric: SeedMetric, dims: CohortDimSpec[]): MetricCohortDi
 const DASHBOARDS: Record<string, DashboardDefinition> = {
   company: {
     id: "company", label: "Company Tracker", eyebrow: "Founder cockpit",
-    hero: ["revenue.arr", "revenue.mrr", "finance.net_burn", "finance.cash_runway_months", "finance.cash_balance"],
+    hero: ["company.healthy_arr_growth", "revenue.arr", "revenue.net_new_arr", "finance.net_burn", "finance.cash_runway_months"],
     groups: [
-      { title: "Revenue quality", keys: ["revenue.total_revenue", "revenue.subscription_revenue", "revenue.services_revenue", "finance.gross_margin"] },
+      { title: "Revenue quality", keys: ["revenue.mrr", "revenue.total_revenue", "revenue.subscription_revenue", "revenue.services_revenue", "finance.gross_margin"] },
+      { title: "Capital efficiency", keys: ["finance.cash_balance", "finance.burn_multiple", "revenue.arr_growth_rate", "revenue.arpa"] },
       { title: "Growth engine", keys: ["sales.qualified_pipeline", "sales.demos", "marketing.conversion_rate", "product.activation_rate", "marketing.website_traffic", "marketing.pipeline_efficiency"] },
       { title: "Customers & retention", keys: ["revenue.customer_count", "revenue.active_subscriptions", "customer_success.retention_rate", "customer_success.churn_rate", "customer_success.customer_health", "customer_success.retention_risk"] },
     ],
   },
   operating: {
     id: "operating", label: "Operating", eyebrow: "Whole business",
-    hero: ["revenue.arr", "finance.net_burn", "finance.cash_runway_months", "sales.qualified_pipeline", "customer_success.retention_rate"],
+    hero: ["company.healthy_arr_growth", "revenue.arr", "finance.net_burn", "finance.cash_runway_months", "customer_success.retention_rate"],
     groups: [
-      { title: "Finance", keys: ["revenue.mrr", "finance.cash_balance", "finance.expenses", "finance.gross_margin"] },
-      { title: "Go-to-market", keys: ["sales.demos", "marketing.website_traffic", "marketing.conversion_rate", "marketing.pipeline_efficiency"] },
+      { title: "Finance", keys: ["revenue.mrr", "revenue.net_new_arr", "finance.burn_multiple", "finance.cash_balance", "finance.expenses", "finance.gross_margin"] },
+      { title: "Go-to-market", keys: ["sales.qualified_pipeline", "sales.demos", "marketing.website_traffic", "marketing.conversion_rate", "marketing.pipeline_efficiency"] },
       { title: "Product & delivery", keys: ["development.delivery_health", "product.activation_rate", "customer_success.customer_activity"] },
       { title: "Customer success", keys: ["revenue.customer_count", "customer_success.customer_health", "customer_success.churn_rate", "customer_success.retention_risk"] },
     ],
   },
   finance: {
     id: "finance", label: "Finance", eyebrow: "Cash, revenue & margin",
-    hero: ["finance.cash_runway_months", "finance.net_burn", "finance.cash_balance", "revenue.mrr", "finance.gross_margin"],
+    hero: ["finance.cash_runway_months", "finance.net_burn", "finance.burn_multiple", "revenue.mrr", "finance.gross_margin"],
     groups: [
-      { title: "Revenue", keys: ["revenue.arr", "revenue.total_revenue", "revenue.subscription_revenue", "revenue.services_revenue"] },
-      { title: "Spend & efficiency", keys: ["finance.expenses", "revenue.active_subscriptions", "revenue.customer_count"] },
+      { title: "Revenue", keys: ["revenue.arr", "revenue.net_new_arr", "revenue.arr_growth_rate", "revenue.total_revenue", "revenue.subscription_revenue", "revenue.services_revenue"] },
+      { title: "Spend & efficiency", keys: ["finance.cash_balance", "finance.expenses", "revenue.arpa", "revenue.active_subscriptions", "revenue.customer_count"] },
     ],
   },
   sales: {

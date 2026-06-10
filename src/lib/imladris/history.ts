@@ -1,4 +1,16 @@
-import { IMLADRIS_METRIC_DEFINITIONS, getImladrisMetricDefinition } from "@/lib/imladris/catalog";
+import {
+  IMLADRIS_DERIVED_METRIC_DEFINITIONS,
+  IMLADRIS_METRIC_DEFINITIONS,
+  getImladrisMetricDefinition,
+} from "@/lib/imladris/catalog";
+import {
+  deriveArpa,
+  deriveArrGrowthRate,
+  deriveBurnMultiple,
+  deriveHealthyArrGrowthScore,
+  deriveNetNewArr,
+} from "@/lib/imladris/derived-metrics";
+import { normalizeMetricStatus } from "@/lib/imladris/confidence";
 import type { PrismaClientType } from "@/lib/prisma";
 
 interface UserContext {
@@ -169,7 +181,107 @@ export async function buildImladrisMetricHistory(input: {
     };
   });
 
-  return { months: axis, metrics };
+  return { months: axis, metrics: [...metrics, ...buildDerivedSeries(axis, metrics)] };
+}
+
+// --- derived series ----------------------------------------------------------
+
+const STATUS_SEVERITY: Record<string, number> = {
+  ready: 0,
+  stale: 1,
+  partial: 2,
+  missing: 3,
+  error: 4,
+};
+
+// Worst normalized status among the input points that month (null when none).
+function worstPointStatus(statuses: Array<string | null>): string | null {
+  const present = statuses.filter((s): s is string => s != null);
+  if (!present.length) return null;
+  return present.reduce((worst, status) => {
+    const normalized = normalizeMetricStatus(status);
+    const worstNormalized = normalizeMetricStatus(worst);
+    return STATUS_SEVERITY[normalized] > STATUS_SEVERITY[worstNormalized] ? status : worst;
+  });
+}
+
+function minConfidence(confidences: Array<number | null>): number | null {
+  const present = confidences.filter((c): c is number => typeof c === "number");
+  return present.length ? Math.min(...present) : null;
+}
+
+/**
+ * Compute monthly series for the derived metrics (net new ARR, growth rate,
+ * burn multiple, ARPA, Healthy ARR Growth) point-by-point from the base
+ * canonical series, degrading status/confidence from the inputs each month.
+ */
+function buildDerivedSeries(axis: string[], base: MetricHistorySeries[]): MetricHistorySeries[] {
+  const byKey = new Map(base.map((series) => [series.key, series.points]));
+  const point = (key: string, i: number): MetricHistoryPoint | undefined => byKey.get(key)?.[i];
+
+  return IMLADRIS_DERIVED_METRIC_DEFINITIONS.map((def) => {
+    const points: MetricHistoryPoint[] = axis.map((month, i) => {
+      const arr = point("revenue.arr", i);
+      const prevArr = i > 0 ? point("revenue.arr", i - 1) : undefined;
+      const netNewArr = deriveNetNewArr(arr?.value ?? null, prevArr?.value ?? null);
+
+      let value: number | null = null;
+      let inputs: MetricHistoryPoint[] = [];
+      switch (def.key) {
+        case "revenue.net_new_arr":
+          value = netNewArr;
+          inputs = [arr, prevArr].filter((p): p is MetricHistoryPoint => !!p);
+          break;
+        case "revenue.arr_growth_rate":
+          value = deriveArrGrowthRate(arr?.value ?? null, prevArr?.value ?? null);
+          inputs = [arr, prevArr].filter((p): p is MetricHistoryPoint => !!p);
+          break;
+        case "finance.burn_multiple": {
+          const burn = point("finance.net_burn", i);
+          value = deriveBurnMultiple(burn?.value ?? null, netNewArr);
+          inputs = [arr, prevArr, burn].filter((p): p is MetricHistoryPoint => !!p);
+          break;
+        }
+        case "revenue.arpa": {
+          const mrr = point("revenue.mrr", i);
+          const customers = point("revenue.customer_count", i);
+          value = deriveArpa(mrr?.value ?? null, customers?.value ?? null);
+          inputs = [mrr, customers].filter((p): p is MetricHistoryPoint => !!p);
+          break;
+        }
+        case "company.healthy_arr_growth": {
+          const burn = point("finance.net_burn", i);
+          const nrr = point("customer_success.retention_rate", i);
+          const runway = point("finance.cash_runway_months", i);
+          value = deriveHealthyArrGrowthScore({
+            arrGrowthRatePct: deriveArrGrowthRate(arr?.value ?? null, prevArr?.value ?? null),
+            netNewArr,
+            burnMultiple: deriveBurnMultiple(burn?.value ?? null, netNewArr),
+            nrrPct: nrr?.value ?? null,
+            runwayMonths: runway?.value ?? null,
+          });
+          inputs = [arr, prevArr, burn, nrr, runway].filter((p): p is MetricHistoryPoint => !!p);
+          break;
+        }
+      }
+
+      if (value == null) return { month, value: null, status: null, confidence: null };
+      return {
+        month,
+        value,
+        status: worstPointStatus(inputs.map((p) => p.status)),
+        confidence: minConfidence(inputs.map((p) => p.confidence)),
+      };
+    });
+
+    return {
+      key: def.key,
+      label: def.label,
+      department: def.department,
+      unit: def.unit,
+      points,
+    };
+  });
 }
 
 function isBetter(candidate: HistoryRow, existing: HistoryRow, ctx: UserContext): boolean {

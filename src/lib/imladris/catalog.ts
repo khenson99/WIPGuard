@@ -52,6 +52,24 @@ export interface ImladrisDashboardDefinition {
   metricKeys: string[];
 }
 
+/**
+ * A metric computed deterministically from other canonical metrics rather than
+ * materialized from raw provider records. Derived metrics never have their own
+ * `imladrisCanonicalMetricValue` rows; the service layer computes them on read
+ * and degrades their status/confidence from the input metrics.
+ */
+export interface ImladrisDerivedMetricDefinition {
+  key: string;
+  label: string;
+  department: ImladrisDepartment | "operating";
+  unit: ImladrisMetricDefinition["unit"];
+  /** Canonical metric keys this metric is calculated from. */
+  inputs: string[];
+  /** Human-readable deterministic formula, shown alongside the value. */
+  formula: string;
+  description: string;
+}
+
 const DEFAULT_PROVIDER_POLICY = {
   freshnessSlaHours: 24,
   historicalLookbackMonths: 13,
@@ -400,6 +418,63 @@ export const IMLADRIS_METRIC_DEFINITIONS: ImladrisMetricDefinition[] = [
   },
 ];
 
+export const IMLADRIS_DERIVED_CALCULATION_VERSION = "derived.v1";
+
+export const IMLADRIS_DERIVED_METRIC_DEFINITIONS: ImladrisDerivedMetricDefinition[] = [
+  {
+    key: "revenue.net_new_arr",
+    label: "Net New ARR",
+    department: "finance",
+    unit: "currency",
+    inputs: ["revenue.arr"],
+    formula: "ARR(current period) − ARR(previous period)",
+    description: "ARR added or lost versus the prior month — the raw output of the growth engine.",
+  },
+  {
+    key: "revenue.arr_growth_rate",
+    label: "ARR Growth Rate",
+    department: "finance",
+    unit: "percent",
+    inputs: ["revenue.arr"],
+    formula: "(ARR(current) − ARR(previous)) ÷ ARR(previous) × 100",
+    description: "Month-over-month ARR growth rate.",
+  },
+  {
+    key: "finance.burn_multiple",
+    label: "Burn Multiple",
+    department: "finance",
+    unit: "ratio",
+    inputs: ["finance.net_burn", "revenue.arr"],
+    formula: "net burn ÷ net new ARR (same period)",
+    description: "Cash burned per dollar of net-new ARR; under ~1.5x is efficient growth.",
+  },
+  {
+    key: "revenue.arpa",
+    label: "ARPA",
+    department: "finance",
+    unit: "currency",
+    inputs: ["revenue.mrr", "revenue.customer_count"],
+    formula: "MRR ÷ active customers",
+    description: "Average monthly recurring revenue per paying account.",
+  },
+  {
+    key: "company.healthy_arr_growth",
+    label: "Healthy ARR Growth",
+    department: "operating",
+    unit: "score",
+    inputs: [
+      "revenue.arr",
+      "finance.net_burn",
+      "customer_success.retention_rate",
+      "finance.cash_runway_months",
+    ],
+    formula:
+      "clamp(ARR growth% ÷ 15) × 40 + clamp((4 − burn multiple) ÷ 3) × 25 + clamp((NRR − 85) ÷ 35) × 20 + clamp((runway − 3) ÷ 15) × 15",
+    description:
+      "Composite 0–100 company-health score: ARR growth interpreted through burn efficiency, net revenue retention, and runway.",
+  },
+];
+
 export const IMLADRIS_DASHBOARDS: ImladrisDashboardDefinition[] = [
   {
     id: "operating",
@@ -430,6 +505,11 @@ export const IMLADRIS_DASHBOARDS: ImladrisDashboardDefinition[] = [
       "customer_success.churn_rate",
       "customer_success.retention_rate",
       "customer_success.retention_risk",
+      "company.healthy_arr_growth",
+      "revenue.net_new_arr",
+      "revenue.arr_growth_rate",
+      "finance.burn_multiple",
+      "revenue.arpa",
     ],
   },
   {
@@ -479,6 +559,11 @@ export const IMLADRIS_DASHBOARDS: ImladrisDashboardDefinition[] = [
       "customer_success.churn_rate",
       "customer_success.retention_rate",
       "customer_success.retention_risk",
+      "company.healthy_arr_growth",
+      "revenue.net_new_arr",
+      "revenue.arr_growth_rate",
+      "finance.burn_multiple",
+      "revenue.arpa",
     ],
   },
   {
@@ -497,6 +582,10 @@ export const IMLADRIS_DASHBOARDS: ImladrisDashboardDefinition[] = [
       "revenue.services_revenue",
       "revenue.active_subscriptions",
       "revenue.customer_count",
+      "revenue.net_new_arr",
+      "revenue.arr_growth_rate",
+      "finance.burn_multiple",
+      "revenue.arpa",
     ],
   },
   {
@@ -561,6 +650,25 @@ export function getImladrisDashboardDefinition(
 
 export function getImladrisMetricDefinition(key: string): ImladrisMetricDefinition | null {
   return IMLADRIS_METRIC_DEFINITIONS.find((metric) => metric.key === key) ?? null;
+}
+
+export function getImladrisDerivedMetricDefinition(
+  key: string,
+): ImladrisDerivedMetricDefinition | null {
+  return IMLADRIS_DERIVED_METRIC_DEFINITIONS.find((metric) => metric.key === key) ?? null;
+}
+
+/** Provider dependencies of a derived metric: the union of its inputs' sources. */
+export function derivedMetricSourceKeys(
+  definition: ImladrisDerivedMetricDefinition,
+): ImladrisProviderKey[] {
+  const keys: ImladrisProviderKey[] = [];
+  for (const inputKey of definition.inputs) {
+    for (const sourceKey of getImladrisMetricDefinition(inputKey)?.sourceKeys ?? []) {
+      if (!keys.includes(sourceKey)) keys.push(sourceKey);
+    }
+  }
+  return keys;
 }
 
 export function getImladrisProviderDefinitionByAlias(
