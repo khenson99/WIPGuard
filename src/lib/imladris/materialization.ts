@@ -4,6 +4,7 @@ import {
 } from "@/generated/prisma/client";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import {
+  IMLADRIS_FINANCE_STANDING_BASE_OBJECT_TYPES,
   imladrisObjectTypeQueryVariants,
   normalizeImladrisObjectType,
 } from "@/lib/imladris/object-types";
@@ -68,13 +69,7 @@ const PAID_AD_PROVIDERS = [
 const STRIPE_INVOICE_LINE_ITEM_KEY = "__imladrisStripeInvoiceLineItem";
 const INTEGRATION_PROVIDER_VALUES = new Set<string>(Object.values(IntegrationProvider));
 const FINANCE_STANDING_OBJECT_TYPES = imladrisObjectTypeQueryVariants(
-  "active_customer_ref",
-  "account_balance",
-  "balance",
-  "deal",
-  "snapshot",
-  "subscription",
-  "subscription_deal",
+  ...IMLADRIS_FINANCE_STANDING_BASE_OBJECT_TYPES,
 );
 
 interface ImladrisActorContext {

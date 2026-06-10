@@ -52,6 +52,25 @@ function pluralizeImladrisObjectType(value: string): string {
   return `${value}s`;
 }
 
+/**
+ * Base object types whose raw records feed point-in-time ("standing")
+ * finance metrics regardless of age — `financeWindowWhere` in
+ * materialization.ts selects them with `timestamp <= periodEnd`, so rows
+ * arbitrarily older than the 13-month lookback window are still read.
+ *
+ * Shared between materialization (query side) and db-pruning (which must
+ * NEVER delete raw records of these types — see src/lib/db-pruning/).
+ */
+export const IMLADRIS_FINANCE_STANDING_BASE_OBJECT_TYPES = [
+  "active_customer_ref",
+  "account_balance",
+  "balance",
+  "deal",
+  "snapshot",
+  "subscription",
+  "subscription_deal",
+] as const;
+
 export function imladrisObjectTypeQueryVariants(...objectTypes: string[]): string[] {
   const variants = new Set<string>();
 
