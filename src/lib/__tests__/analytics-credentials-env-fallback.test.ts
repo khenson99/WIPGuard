@@ -73,6 +73,12 @@ const ENV_KEYS = [
   "META_CLIENT_SECRET",
   "STRIPE_SECRET_KEY",
   "REDDIT_REFRESH_TOKEN",
+  "MERCURY_API_TOKEN",
+  "SEMRUSH_API_TOKEN",
+  "SEMRUSH_API_KEY",
+  "SEMRUSH_DOMAIN",
+  "LINEAR_API_KEY",
+  "LINEAR_TOKEN",
 ] as const;
 
 function connectionRow(overrides: {
@@ -218,5 +224,74 @@ describe("analytics credentials env fallback vs placeholder rows", () => {
 
     expect(creds.redditRefreshToken).toBe("reddit-env-refresh");
     expect(creds.freshness[IntegrationProvider.REDDIT].source).toBe("env");
+  });
+
+  it("keeps the Linear env fallback engaged when only a placeholder row exists", async () => {
+    // Production shape (Railway, 2026-06-10): LINEAR row held the literal
+    // "env-managed" placeholder in ERROR state after the checker sent that
+    // placeholder as the API key and got a 401 back.
+    process.env.LINEAR_API_KEY = "lin_api_env";
+
+    mockIntegrationConnectionFindMany.mockResolvedValueOnce([
+      connectionRow({
+        provider: IntegrationProvider.LINEAR,
+        status: IntegrationConnectionStatus.ERROR,
+        accessToken: "env-managed",
+        lastError: "Linear health check failed (401)",
+      }),
+    ]);
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("user_1");
+
+    expect(creds.linearApiKey).toBe("lin_api_env");
+    expect(creds.freshness[IntegrationProvider.LINEAR].source).toBe("env");
+  });
+
+  it("keeps the Mercury env fallback engaged when only a placeholder row exists", async () => {
+    // Production shape: MERCURY placeholder row in ERROR with "Refresh token
+    // is missing" — the blocked-env path routed the placeholder row into the
+    // OAuth refresh lookup instead of using MERCURY_API_TOKEN.
+    process.env.MERCURY_API_TOKEN = "mercury-env-key";
+
+    mockIntegrationConnectionFindMany.mockResolvedValueOnce([
+      connectionRow({
+        provider: IntegrationProvider.MERCURY,
+        status: IntegrationConnectionStatus.ERROR,
+        accessToken: "env-managed",
+        lastError: "Refresh token is missing",
+      }),
+    ]);
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("user_1");
+
+    expect(creds.mercuryKey).toBe("mercury-env-key");
+    // Placeholder rows must not be routed into the OAuth token lookup.
+    expect(mockGetValidIntegrationAccessToken).not.toHaveBeenCalled();
+    expect(creds.freshness[IntegrationProvider.MERCURY].source).toBe("env");
+  });
+
+  it("keeps the SEMrush env fallback engaged when only a placeholder row exists", async () => {
+    // Production shape: SEMRUSH placeholder row whose literal token was sent
+    // as the API key ("ERROR 120 :: WRONG KEY"), masking the API's real state.
+    process.env.SEMRUSH_API_TOKEN = "semrush-env-key";
+    process.env.SEMRUSH_DOMAIN = "arda.cards";
+
+    mockIntegrationConnectionFindMany.mockResolvedValueOnce([
+      connectionRow({
+        provider: IntegrationProvider.SEMRUSH,
+        status: IntegrationConnectionStatus.ERROR,
+        accessToken: "env-managed",
+        lastError: "SEMrush health check failed (200): ERROR 120 :: WRONG KEY",
+      }),
+    ]);
+
+    const { getCredentials } = await import("@/lib/analytics/credentials");
+    const creds = await getCredentials("user_1");
+
+    expect(creds.semrushApiToken).toBe("semrush-env-key");
+    expect(creds.semrushDomain).toBe("arda.cards");
+    expect(creds.freshness[IntegrationProvider.SEMRUSH].source).toBe("env");
   });
 });
