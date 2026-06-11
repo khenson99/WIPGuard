@@ -316,8 +316,14 @@ export async function fetchLinearData(input: {
                 endCursor
               }
             }
+            # Page sizes are complexity-bounded: Linear caps query complexity
+            # at 10,000 and the original projects(first: 50) x issues(first: 100)
+            # shape scored ~37,578 ("Query too complex"). projects(20) with
+            # nested issues(25) measures comfortably under the cap; deeper
+            # projects continue via $projectAfter and the ImladrisProjectIssues
+            # follow-up pagination, so nothing is truncated.
             projects(
-              first: 50
+              first: 20
               after: $projectAfter
               includeArchived: false
               orderBy: updatedAt
@@ -336,7 +342,7 @@ export async function fetchLinearData(input: {
                 completedAt
                 lead { id name email }
                 teams { nodes { id key name } }
-                issues(first: 100) {
+                issues(first: 25) {
                   nodes {
                     id
                     identifier
