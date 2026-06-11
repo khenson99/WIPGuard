@@ -43,19 +43,13 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
       {
         id: "company-tracker",
         label: "Company Tracker",
-        href: "/metrics/company",
+        href: "/operating/company",
         workspaceId: "metrics",
       },
       {
         id: "operating",
         label: "Operating",
         href: "/operating",
-        workspaceId: "metrics",
-      },
-      {
-        id: "company-tracker-cockpit",
-        label: "Company Tracker (Cockpit)",
-        href: "/operating/company",
         workspaceId: "metrics",
       },
       {

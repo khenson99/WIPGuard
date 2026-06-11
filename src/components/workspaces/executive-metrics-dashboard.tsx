@@ -72,7 +72,7 @@ const DASHBOARDS: DashboardConfig[] = [
       "The company view founders need every week: growth, runway, customer risk, spend concentration, and data readiness.",
     metricIds: ["arr", "runway", "netBurn", "customerRisk"],
     primaryAction: {
-      href: "/metrics/company",
+      href: "/operating/company",
       label: "Open company tracker",
       icon: Gauge,
     },
@@ -115,7 +115,7 @@ const FALLBACK_DASHBOARD: DashboardConfig = DASHBOARDS[0] ?? {
   summary: "Company operating metrics for founders and investors.",
   metricIds: [],
   primaryAction: {
-    href: "/metrics/company",
+    href: "/operating/company",
     label: "Open company tracker",
     icon: Gauge,
   },
@@ -127,7 +127,7 @@ const FALLBACK_METRIC: ExecutiveMetric = {
   value: "Missing",
   detail: "Metric data is not available yet.",
   tone: "neutral",
-  href: "/metrics/company",
+  href: "/operating/company",
   icon: Gauge,
 };
 
@@ -444,7 +444,7 @@ export function ExecutiveMetricsDashboard({
         value: formatCurrency(company.summary.arr, currency),
         detail: `${formatCurrency(company.summary.mrr, currency)} MRR from ${formatNumber(company.summary.activeSubscriptions)} active subscriptions.`,
         tone: company.summary.arr ? "good" : "risk",
-        href: "/metrics/company",
+        href: "/operating/company",
         icon: TrendingUp,
       },
       {
@@ -480,7 +480,7 @@ export function ExecutiveMetricsDashboard({
         value: formatCurrency(company.summary.qualifiedPipeline, currency),
         detail: "Sales pipeline from governed company tracker inputs.",
         tone: company.summary.qualifiedPipeline ? "good" : "watch",
-        href: "/metrics/company",
+        href: "/operating/company",
         icon: BriefcaseBusiness,
       },
       {
@@ -515,7 +515,7 @@ export function ExecutiveMetricsDashboard({
         value: `${boardScore}/100`,
         detail: `${company.boardReadiness.blockers.length} blockers and ${company.boardReadiness.requiredActionCount} required actions.`,
         tone: boardScore >= 90 ? "good" : boardScore >= 70 ? "watch" : "risk",
-        href: "/metrics/company",
+        href: "/operating/company",
         icon: ClipboardCheck,
       },
       {
@@ -524,7 +524,7 @@ export function ExecutiveMetricsDashboard({
         value: formatPercent(dataTrustPct),
         detail: `${company.trust.summary.ready} ready, ${company.trust.summary.missing} missing, ${company.trust.summary.error} error.`,
         tone: toneForPercent(dataTrustPct, 80, 60),
-        href: "/metrics/company",
+        href: "/operating/company",
         icon: ShieldCheck,
       },
       {

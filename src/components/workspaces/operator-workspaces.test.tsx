@@ -301,7 +301,7 @@ describe("operator workspaces", () => {
     render(<MetricsWorkspace metrics={CANONICAL_METRICS} ceoSnapshot={CEO_SNAPSHOT} />);
 
     expect(screen.getByRole("heading", { name: "Metrics Command Center" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /company tracker/i }).getAttribute("href")).toBe("/metrics/company");
+    expect(screen.getByRole("link", { name: /company tracker/i }).getAttribute("href")).toBe("/operating/company");
     expect(screen.getByRole("link", { name: /customer health/i }).getAttribute("href")).toBe("/metrics/customer-health");
     expect(screen.getByRole("link", { name: /expenses/i }).getAttribute("href")).toBe("/metrics/expenses");
     expect(screen.getByRole("link", { name: /goals/i }).getAttribute("href")).toBe("/goals");

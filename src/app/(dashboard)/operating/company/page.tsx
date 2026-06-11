@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 /**
  * Company Tracker — the redesigned founder-cockpit lead view.
  *
- * Lives at a NEW route; the existing `/metrics/company` Company Tracker is left
- * intact for parity comparison. Same auth + investor gating as Operating; the
+ * Canonical route for the Company Tracker; the legacy `/metrics/company`
+ * page now redirects here. Same auth + investor gating as Operating; the
  * dashboard data is fetched client-side from the NextAuth-gated Imladris
  * endpoints, with `?demo` opting into the loudly-labeled demo model.
  */

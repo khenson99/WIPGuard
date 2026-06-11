@@ -1,46 +1,27 @@
-import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import CompanyTrackerPage from "./page";
+import LegacyCompanyTrackerRedirect from "./page";
 
-vi.mock("@/lib/auth", () => ({
-  auth: vi.fn(async () => ({
-    user: {
-      id: "user_1",
-      organizationId: "org_1",
-    },
-  })),
-}));
-
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    imladrisCanonicalMetricValue: {
-      findMany: vi.fn(async () => []),
-    },
-    financialGoal: {
-      findMany: vi.fn(async () => []),
-    },
-    analyticsSnapshot: {
-      findMany: vi.fn(async () => []),
-    },
-  },
-}));
+const redirectMock = vi.fn((url: string) => {
+  throw new Error(`NEXT_REDIRECT:${url}`);
+});
 
 vi.mock("next/navigation", () => ({
-  redirect: vi.fn(),
-  useRouter: () => ({
-    refresh: vi.fn(),
-  }),
+  redirect: (url: string) => redirectMock(url),
 }));
 
 describe("/metrics/company", () => {
-  it("renders the authenticated company tracker route", async () => {
-    const page = await CompanyTrackerPage();
+  it("redirects the legacy route to the founder cockpit", async () => {
+    await expect(
+      LegacyCompanyTrackerRedirect({ searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("NEXT_REDIRECT:/operating/company");
+    expect(redirectMock).toHaveBeenCalledWith("/operating/company");
+  });
 
-    render(page);
-
-    expect(screen.getByRole("heading", { name: "Company Tracker" })).toBeTruthy();
-    expect(screen.getByText("Goal Progress")).toBeTruthy();
-    expect(screen.getByText("Data Trust")).toBeTruthy();
-    expect(screen.getAllByText("Missing").length).toBeGreaterThan(0);
+  it("forwards the query string so ?demo opt-in survives", async () => {
+    redirectMock.mockClear();
+    await expect(
+      LegacyCompanyTrackerRedirect({ searchParams: Promise.resolve({ demo: "" }) }),
+    ).rejects.toThrow("NEXT_REDIRECT:/operating/company?demo=");
+    expect(redirectMock).toHaveBeenCalledWith("/operating/company?demo=");
   });
 });
