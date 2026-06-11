@@ -169,22 +169,63 @@ if (
   );
 }
 
+// Keys whose values must never reach logs, matched case-insensitively as
+// substrings: clientSecret / client_secret, cookies, csrfToken, code_verifier,
+// state / nonce values, passwords, Authorization headers, etc. next-auth debug
+// events such as GET_AUTHORIZATION_URL include the full provider config
+// (OAuth client secret) and the state/PKCE cookie payloads in `metadata`.
+const SENSITIVE_LOG_KEY_PATTERN =
+  /secret|token|cookie|password|credential|authorization|signature|code_verifier|codeverifier|pkce|state|nonce|session/i;
+
+const REDACTED = "[REDACTED]";
+const MAX_SANITIZE_DEPTH = 8;
+
+function sanitizeLogMetadata(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message, stack: value.stack };
+  }
+  if (depth >= MAX_SANITIZE_DEPTH) return "[Truncated]";
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeLogMetadata(entry, depth + 1, seen));
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    sanitized[key] = SENSITIVE_LOG_KEY_PATTERN.test(key)
+      ? REDACTED
+      : sanitizeLogMetadata(entry, depth + 1, seen);
+  }
+  return sanitized;
+}
+
 export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: createResilientAdapter() as any,
   providers,
-  // Opt-in only: next-auth's debug output dumps the full provider config —
-  // including the OAuth client secret — into server logs.
-  debug: process.env.NEXTAUTH_DEBUG === "true",
+  // Hard-disabled in production builds, opt-in elsewhere: next-auth's debug
+  // output dumps the full provider config — including the OAuth client
+  // secret — plus state/PKCE cookies into server logs. A stray
+  // NEXTAUTH_DEBUG=true on the production host must never re-enable it.
+  debug: process.env.NODE_ENV !== "production" && process.env.NEXTAUTH_DEBUG === "true",
   logger: {
     error(code, metadata) {
-      console.error("[next-auth][error]", code, metadata);
+      console.error("[next-auth][error]", code, sanitizeLogMetadata(metadata));
     },
     warn(code) {
       console.warn("[next-auth][warn]", code);
     },
     debug(code, metadata) {
-      console.log("[next-auth][debug]", code, metadata);
+      // Defense in depth: even with debug enabled, never print secret-bearing
+      // metadata (provider config, cookie values) verbatim.
+      console.log("[next-auth][debug]", code, sanitizeLogMetadata(metadata));
     },
   },
   session: {
