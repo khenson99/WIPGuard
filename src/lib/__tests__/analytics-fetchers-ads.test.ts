@@ -677,6 +677,81 @@ describe("analytics ads fetchers", () => {
     expect(accountRequests[1]?.searchParams.get("after")).toBe("accounts_cursor_2");
   });
 
+  it("extends the posts until bound when callers pass a single-day range", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname.endsWith("/me/accounts")) {
+        return jsonResponse({ data: [{ id: "page-1", access_token: "page-token" }] });
+      }
+
+      if (url.pathname.endsWith("/page-1")) {
+        return jsonResponse({ fan_count: 10, followers_count: 15 });
+      }
+
+      if (url.pathname.endsWith("/page-1/insights")) {
+        return jsonResponse({ data: [] });
+      }
+
+      if (url.pathname.endsWith("/page-1/posts")) {
+        // Graph rejects equal date-string bounds on this edge:
+        // "(#100) since should be less than until"
+        expect(url.searchParams.get("since")).not.toBe(url.searchParams.get("until"));
+        return jsonResponse({ data: [] });
+      }
+
+      throw new Error(`Unexpected Meta Page request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaPageData("user-token", "page-1", {
+      fromDate: new Date("2026-06-11T00:00:00.000Z"),
+      toDate: new Date("2026-06-11T23:59:59.999Z"),
+    });
+
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    const postsRequest = urls.find((url) => url.pathname.endsWith("/page-1/posts"));
+    expect(postsRequest?.searchParams.get("since")).toBe("2026-06-11");
+    expect(postsRequest?.searchParams.get("until")).toBe("2026-06-12");
+  });
+
+  it("keeps the caller's posts until bound for multi-day ranges", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname.endsWith("/me/accounts")) {
+        return jsonResponse({ data: [{ id: "page-1", access_token: "page-token" }] });
+      }
+
+      if (url.pathname.endsWith("/page-1")) {
+        return jsonResponse({ fan_count: 10, followers_count: 15 });
+      }
+
+      if (url.pathname.endsWith("/page-1/insights")) {
+        return jsonResponse({ data: [] });
+      }
+
+      if (url.pathname.endsWith("/page-1/posts")) {
+        return jsonResponse({ data: [] });
+      }
+
+      throw new Error(`Unexpected Meta Page request: ${url.pathname}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaPageData("user-token", "page-1", {
+      fromDate: new Date("2026-06-01T00:00:00.000Z"),
+      toDate: new Date("2026-06-11T23:59:59.999Z"),
+    });
+
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url)));
+    const postsRequest = urls.find((url) => url.pathname.endsWith("/page-1/posts"));
+    expect(postsRequest?.searchParams.get("since")).toBe("2026-06-01");
+    expect(postsRequest?.searchParams.get("until")).toBe("2026-06-11");
+  });
+
   it("follows Meta Page post pagination before computing top posts", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
