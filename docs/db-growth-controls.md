@@ -14,9 +14,10 @@ All controls run continuously inside the shared sync cycle
 (`runAnalyticsSync` in `src/lib/sync/analytics.ts`), which both the worker
 orchestrator (`worker/sync-runner.ts` → `src/lib/sync/orchestrator.ts`) and
 the legacy cron route (`/api/cron/sync`) call. Results appear in the sync
-output as `lineagePruning` / `outboxPruning` (the name `retention` was already
-taken by customer-retention materialization), and pruning errors surface as
-partial failures so a silently regrowing table stays visible.
+output as `lineagePruning` / `metricValuePruning` / `outboxPruning` (the name
+`retention` was already taken by customer-retention materialization), and
+pruning errors surface as partial failures so a silently regrowing table
+stays visible.
 
 ### 1. Lineage retention — `src/lib/imladris/lineage-retention.ts`
 
@@ -63,6 +64,27 @@ the primary control.
 
 Status counts in `/api/events` metrics reflect the retained window.
 
+### 4. Metric value thinning — `src/lib/imladris/metric-value-retention.ts`
+
+`ImladrisCanonicalMetricValue` itself gains one row per metric per user every
+~10-minute cycle (`periodEnd = now` mints a new row each run) — slow but
+unbounded. Rows older than `IMLADRIS_METRIC_VALUE_INTRADAY_RETENTION_DAYS`
+(default 14) are thinned to **one row per (organizationId, userId, metricKey,
+UTC day)** — the day's last `(periodEnd, computedAt)`, i.e. the end-of-day
+value. Safe because `imladris/history.ts` buckets monthly (one best row per
+metric per month) and backdated exports pick the latest row `<= toDate`, which
+after thinning is that day's end-of-day value. Sub-daily resolution is only
+lost for dates older than the intraday window.
+
+Two extra guards: future-period rows (`periodEnd > now`) are never touched,
+and only rows with **no lineage** are deleted (`NOT EXISTS` on
+`ImladrisMetricLineage.metricValueId`). The lineage guard is load-bearing
+twice over: the FK cascade from metric values to lineage can never fire (every
+DELETE stays exactly LIMIT-bounded), and the thinner is strictly sequenced
+behind the lineage pruner — the overall-latest value per group and anything
+inside the lineage window still carry lineage and are untouchable. If lineage
+pruning breaks, thinning fail-safes to a no-op for those rows.
+
 ## Why no schema migration
 
 Deliberate: on a ~9GB table, the safest migration is none. Both pruners use
@@ -83,8 +105,8 @@ sync cycles, and the outbox backlog in a few cycles. Watch the sync output's
 `lineagePruning.deletedRows` / `completed` fields (worker logs or
 `/api/cron/sync?wait=1` response).
 
-During the drain the analytics module runs up to ~75s longer per cycle
-(`IMLADRIS_LINEAGE_PRUNE_BUDGET_MS` + `OUTBOX_PRUNE_BUDGET_MS`). The worker's
+During the drain the analytics module runs up to ~90s longer per cycle (the
+sum of the three `*_PRUNE_BUDGET_MS` budgets). The worker's
 whole-cycle timeout is `WORKER_SYNC_TIMEOUT` (default 300s); if cycles already
 run near that ceiling, either raise it temporarily or lower the prune budgets
 — an interrupted pass is harmless and resumes next cycle.
@@ -112,6 +134,8 @@ writes reuse freed pages — but does not shrink files on disk. After
 | `IMLADRIS_LINEAGE_RETENTION_DAYS` | 14 | Lower = smaller steady-state table; keep ≥ a few days above the board-pack generation lag. |
 | `IMLADRIS_LINEAGE_MAX_ROWS_PER_SOURCE` | 1000 | Per-source lineage detail cap per metric value. |
 | `IMLADRIS_LINEAGE_PRUNE_BUDGET_MS` | 60000 | Per-cycle pruning time budget. |
+| `IMLADRIS_METRIC_VALUE_INTRADAY_RETENTION_DAYS` | 14 | Full intraday metric value detail kept this long; older days thin to one end-of-day row. Keep ≥ the lineage retention window (rows with lineage are skipped regardless). |
+| `IMLADRIS_METRIC_VALUE_PRUNE_BUDGET_MS` | 15000 | Per-cycle thinning time budget. |
 | `OUTBOX_DISPATCHED_RETENTION_DAYS` | 14 | Window for terminal-success events. |
 | `OUTBOX_DEAD_LETTER_RETENTION_DAYS` | 30 | Window for inspectable/replayable dead letters. |
 | `OUTBOX_PRUNE_BUDGET_MS` | 15000 | Per-cycle pruning time budget. |

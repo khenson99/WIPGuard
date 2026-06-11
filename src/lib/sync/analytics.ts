@@ -33,6 +33,10 @@ import {
   type PruneImladrisMetricLineageResult,
 } from '@/lib/imladris/lineage-retention';
 import {
+  pruneImladrisMetricValues,
+  type PruneImladrisMetricValuesResult,
+} from '@/lib/imladris/metric-value-retention';
+import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
@@ -73,6 +77,7 @@ export interface AnalyticsSyncResult {
    * domain.
    */
   lineagePruning: GrowthPruneOutcome<PruneImladrisMetricLineageResult>;
+  metricValuePruning: GrowthPruneOutcome<PruneImladrisMetricValuesResult>;
   outboxPruning: GrowthPruneOutcome<PruneOutboxEventsResult>;
 }
 
@@ -276,6 +281,16 @@ export async function runAnalyticsSync(
     console.error('analytics_sync.lineage_pruning_failed', { error: message });
     return { error: message };
   });
+  // Runs after lineage pruning by design: it only deletes lineage-free rows,
+  // so the lineage pass clears the way and this pass can never cascade.
+  const metricValuePruning = await pruneImladrisMetricValues({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneImladrisMetricValuesResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.metric_value_pruning_failed', { error: message });
+    return { error: message };
+  });
   const outboxPruning = await pruneOutboxEvents({
     prisma: input.prisma,
     now,
@@ -285,5 +300,5 @@ export async function runAnalyticsSync(
     return { error: message };
   });
 
-  return { refresh, pruning, imladris, lineagePruning, outboxPruning };
+  return { refresh, pruning, imladris, lineagePruning, metricValuePruning, outboxPruning };
 }

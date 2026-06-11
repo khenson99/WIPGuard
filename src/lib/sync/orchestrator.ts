@@ -109,6 +109,7 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
   // filled the database volume on 2026-06-10.
   for (const [field, label] of [
     ['lineagePruning', 'lineage_pruning'],
+    ['metricValuePruning', 'metric_value_pruning'],
     ['outboxPruning', 'outbox_pruning'],
   ] as const) {
     const outcome = asRecord(record[field]);

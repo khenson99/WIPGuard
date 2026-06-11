@@ -153,6 +153,7 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
   // filled the database volume on 2026-06-10.
   for (const [field, label] of [
     ["lineagePruning", "lineage_pruning"],
+    ["metricValuePruning", "metric_value_pruning"],
     ["outboxPruning", "outbox_pruning"],
   ] as const) {
     const outcome = asRecord(record[field]);
@@ -401,6 +402,7 @@ async function executeCronSync(input: {
       pruning: null as unknown,
       retention: null as unknown,
       lineagePruning: null as unknown,
+      metricValuePruning: null as unknown,
       outboxPruning: null as unknown,
     };
 
@@ -413,6 +415,7 @@ async function executeCronSync(input: {
       settled.analytics = analyticsSyncResult.value.refresh;
       settled.pruning = analyticsSyncResult.value.pruning;
       settled.lineagePruning = analyticsSyncResult.value.lineagePruning;
+      settled.metricValuePruning = analyticsSyncResult.value.metricValuePruning;
       settled.outboxPruning = analyticsSyncResult.value.outboxPruning;
       failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {

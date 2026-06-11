@@ -565,6 +565,7 @@ describe('sync orchestrator', () => {
       pruning: { deleted: 0 },
       imladris: [],
       lineagePruning: { error: 'lineage prune exploded' },
+      metricValuePruning: { error: 'metric value prune exploded' },
       outboxPruning: { error: 'outbox prune exploded' },
     } as never);
 
@@ -585,7 +586,7 @@ describe('sync orchestrator', () => {
         module: 'analytics',
         success: false,
         error:
-          'lineage_pruning: lineage prune exploded; outbox_pruning: outbox prune exploded',
+          'lineage_pruning: lineage prune exploded; metric_value_pruning: metric value prune exploded; outbox_pruning: outbox prune exploded',
       }),
     ]);
   });
