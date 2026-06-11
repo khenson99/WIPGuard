@@ -1678,8 +1678,20 @@ export async function fetchMetaPageData(
   );
   postsUrl.searchParams.set("limit", "100");
   if (useRange) {
+    // The posts edge rejects equal date-string bounds with
+    // "(#100) since should be less than until", which happens whenever a
+    // caller passes a single-day range (e.g. integration health checks).
+    // Graph treats a date-string `until` as an exclusive bound, so extend it
+    // by one day to keep the window covering the intended single day. The
+    // insights edge accepts equal bounds, so only the posts request needs it.
+    const postsUntil =
+      since === until
+        ? new Date(rangeTo!.getTime() + 24 * 60 * 60 * 1000)
+            .toISOString()
+            .slice(0, 10)
+        : until!;
     postsUrl.searchParams.set("since", since!);
-    postsUrl.searchParams.set("until", until!);
+    postsUrl.searchParams.set("until", postsUntil);
   }
 
   const postPageResult = await fetchMetaGraphPages<{
