@@ -285,8 +285,8 @@ export async function fetchLinearData(input: {
       body: JSON.stringify({
         query: `
           query ImladrisLinear(
-            $updatedAfter: DateTime!
-            $updatedBefore: DateTime!
+            $updatedAfter: DateTimeOrDuration!
+            $updatedBefore: DateTimeOrDuration!
             $after: String
             $projectAfter: String
             $includeIssues: Boolean!
