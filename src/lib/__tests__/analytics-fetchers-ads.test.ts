@@ -18,6 +18,30 @@ function textResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { "Content-Type": "text/plain" } });
 }
 
+function metaPageRoutingFetchMock() {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+
+    if (url.pathname.endsWith("/me/accounts")) {
+      return jsonResponse({ data: [{ id: "page-1", access_token: "page-token" }] });
+    }
+
+    if (url.pathname.endsWith("/page-1")) {
+      return jsonResponse({ fan_count: 10, followers_count: 15 });
+    }
+
+    if (url.pathname.endsWith("/page-1/insights")) {
+      return jsonResponse({ data: [] });
+    }
+
+    if (url.pathname.endsWith("/page-1/posts")) {
+      return jsonResponse({ data: [] });
+    }
+
+    throw new Error(`Unexpected Meta Page request: ${url.pathname}`);
+  });
+}
+
 describe("analytics ads fetchers", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -675,6 +699,111 @@ describe("analytics ads fetchers", () => {
 
     expect(accountRequests).toHaveLength(2);
     expect(accountRequests[1]?.searchParams.get("after")).toBe("accounts_cursor_2");
+  });
+
+  it("extends a single-day Meta Page range so Graph API since stays before until", async () => {
+    const fetchMock = metaPageRoutingFetchMock();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    // Mirrors checkMetaPageHealth: both bounds land on the same UTC day.
+    // Serialized naively this becomes since === until, which the Graph API
+    // rejects with "(#100) since should be less than until".
+    await fetchMetaPageData("user-token", "page-1", {
+      fromDate: new Date("2026-06-11T00:00:00.000Z"),
+      toDate: new Date("2026-06-11T23:59:59.999Z"),
+    });
+
+    const rangedRequests = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.searchParams.has("since"));
+
+    expect(rangedRequests.some((url) => url.pathname.endsWith("/page-1/insights"))).toBe(true);
+    expect(rangedRequests.some((url) => url.pathname.endsWith("/page-1/posts"))).toBe(true);
+    for (const url of rangedRequests) {
+      expect(url.searchParams.get("since")).toBe("2026-06-11");
+      // Date-string `until` is an exclusive bound, so the next day covers
+      // exactly the requested single day.
+      expect(url.searchParams.get("until")).toBe("2026-06-12");
+    }
+  });
+
+  it("extends a single-day Meta Page range across year boundaries", async () => {
+    const fetchMock = metaPageRoutingFetchMock();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaPageData("user-token", "page-1", {
+      fromDate: new Date("2026-12-31T00:00:00.000Z"),
+      toDate: new Date("2026-12-31T23:59:59.999Z"),
+    });
+
+    const rangedRequests = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.searchParams.has("since"));
+
+    expect(rangedRequests.length).toBeGreaterThan(0);
+    for (const url of rangedRequests) {
+      expect(url.searchParams.get("since")).toBe("2026-12-31");
+      expect(url.searchParams.get("until")).toBe("2027-01-01");
+    }
+  });
+
+  it("keeps multi-day Meta Page ranges unchanged", async () => {
+    const fetchMock = metaPageRoutingFetchMock();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaPageData("user-token", "page-1", {
+      fromDate: new Date("2026-02-01T00:00:00.000Z"),
+      toDate: new Date("2026-02-10T23:59:59.999Z"),
+    });
+
+    const rangedRequests = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.searchParams.has("since"));
+
+    expect(rangedRequests.length).toBeGreaterThan(0);
+    for (const url of rangedRequests) {
+      expect(url.searchParams.get("since")).toBe("2026-02-01");
+      expect(url.searchParams.get("until")).toBe("2026-02-10");
+    }
+  });
+
+  it("keeps single-day Meta Ads time_range bounds equal", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+
+      if (url.pathname.endsWith("/act_12345/insights")) {
+        return jsonResponse({ data: [] });
+      }
+
+      if (url.pathname.endsWith("/act_12345/campaigns")) {
+        return jsonResponse({ data: [] });
+      }
+
+      throw new Error(`Unexpected Meta request: ${url.pathname}`);
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await fetchMetaAdsData("meta-token", "12345", {
+      fromDate: new Date("2026-06-11T00:00:00.000Z"),
+      toDate: new Date("2026-06-11T23:59:59.999Z"),
+    });
+
+    const rangedRequests = fetchMock.mock.calls
+      .map(([url]) => new URL(String(url)))
+      .filter((url) => url.searchParams.has("time_range"));
+
+    // The Marketing API time_range param is inclusive on both ends;
+    // since === until is the documented single-day query and must not be
+    // extended, or single-day requests would include an extra day of spend.
+    expect(rangedRequests).toHaveLength(2);
+    for (const url of rangedRequests) {
+      const timeRange = JSON.parse(url.searchParams.get("time_range") ?? "{}") as {
+        since?: string;
+        until?: string;
+      };
+      expect(timeRange.since).toBe("2026-06-11");
+      expect(timeRange.until).toBe("2026-06-11");
+    }
   });
 
   it("follows Meta Page post pagination before computing top posts", async () => {

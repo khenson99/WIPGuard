@@ -1356,6 +1356,10 @@ export async function fetchMetaAdsData(
     !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
+  // The Marketing API `time_range` JSON param is inclusive on both ends, and
+  // since === until is the documented way to query a single day. Do NOT extend
+  // it the way toMetaSinceUntilDateStrings does for query-string `since`/`until`
+  // params, or single-day requests would silently include an extra day of spend.
   const since = useRange ? rangeFrom!.toISOString().slice(0, 10) : null;
   const until = useRange ? rangeTo!.toISOString().slice(0, 10) : null;
 
@@ -1596,6 +1600,36 @@ async function resolveMetaPageAccessToken(input: {
   }
 }
 
+/**
+ * Serialize a date range to Graph API query-string `since`/`until` values
+ * (YYYY-MM-DD).
+ *
+ * The Graph API parses bare date strings as midnight UTC and requires
+ * since < until, so a single-day range serialized naively (since === until)
+ * is rejected with "(#100) since should be less than until". When both
+ * bounds land on the same UTC day, extend `until` to the next day — `until`
+ * is an exclusive bound for date strings, so the request covers exactly
+ * that one day.
+ *
+ * This applies to query-string `since`/`until` params (Page posts, Page
+ * insights). The Marketing API `time_range` JSON param is inclusive on both
+ * ends and accepts since === until for a single day, so it must NOT be
+ * extended this way.
+ */
+function toMetaSinceUntilDateStrings(
+  fromDate: Date,
+  toDate: Date
+): { since: string; until: string } {
+  const since = fromDate.toISOString().slice(0, 10);
+  let until = toDate.toISOString().slice(0, 10);
+  if (since === until) {
+    const nextDay = new Date(`${until}T00:00:00.000Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    until = nextDay.toISOString().slice(0, 10);
+  }
+  return { since, until };
+}
+
 export async function fetchMetaPageData(
   accessToken: string,
   pageId: string,
@@ -1623,8 +1657,9 @@ export async function fetchMetaPageData(
     !Number.isNaN(rangeTo?.getTime() ?? NaN) &&
     Boolean(rangeFrom && rangeTo && rangeFrom <= rangeTo);
 
-  const since = useRange ? rangeFrom!.toISOString().slice(0, 10) : null;
-  const until = useRange ? rangeTo!.toISOString().slice(0, 10) : null;
+  const range = useRange ? toMetaSinceUntilDateStrings(rangeFrom!, rangeTo!) : null;
+  const since = range?.since ?? null;
+  const until = range?.until ?? null;
 
   const pageUrl = new URL(
     `https://graph.facebook.com/${META_GRAPH_VERSION}/${normalizedPageId}`
