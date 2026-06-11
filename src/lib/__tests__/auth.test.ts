@@ -126,8 +126,24 @@ describe("auth options", () => {
   });
 
   it("keeps next-auth debug logging opt-in so provider secrets stay out of logs", async () => {
+    const mutableEnv = process.env as Record<string, string | undefined>;
+    delete mutableEnv.NEXTAUTH_DEBUG;
     const authOptions = await loadAuthOptions();
     expect(authOptions.debug).toBe(false);
+    // The flag alone is not enough: next-auth's setLogger() overrides the
+    // debug no-op with any custom logger.debug AFTER applying the flag, so a
+    // custom debug method must not exist at all unless explicitly opted in.
+    expect(authOptions.logger?.debug).toBeUndefined();
+  });
+
+  it("enables the debug logger only when NEXTAUTH_DEBUG=true", async () => {
+    const mutableEnv = process.env as Record<string, string | undefined>;
+    mutableEnv.NEXTAUTH_DEBUG = "true";
+    const authOptions = await loadAuthOptions();
+    delete mutableEnv.NEXTAUTH_DEBUG;
+
+    expect(authOptions.debug).toBe(true);
+    expect(typeof authOptions.logger?.debug).toBe("function");
   });
 
   it("bootstraps a development organization for credential logins without one", async () => {

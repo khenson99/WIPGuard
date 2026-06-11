@@ -183,9 +183,18 @@ export const authOptions: NextAuthOptions = {
     warn(code) {
       console.warn("[next-auth][warn]", code);
     },
-    debug(code, metadata) {
-      console.log("[next-auth][debug]", code, metadata);
-    },
+    // The debug method must be OMITTED unless explicitly opted in: next-auth's
+    // setLogger() applies the `debug: false` no-op FIRST and then overrides it
+    // with any custom logger.debug, so a custom debug logger runs even when
+    // `debug` is false — leaking the provider config (client secret included)
+    // into production logs. Verified against prod logs on 2026-06-11.
+    ...(process.env.NEXTAUTH_DEBUG === "true"
+      ? {
+          debug(code: string, metadata?: unknown) {
+            console.log("[next-auth][debug]", code, metadata);
+          },
+        }
+      : {}),
   },
   session: {
     strategy: "jwt",
