@@ -57,15 +57,33 @@ vi.mock("@/lib/security-audit", () => ({
   recordSecurityAuditEvent: mockRecordSecurityAuditEvent,
 }));
 
-async function loadAuthOptions() {
+async function loadAuthOptions(env: Record<string, string | undefined> = {}) {
   vi.resetModules();
   const mutableEnv = process.env as Record<string, string | undefined>;
-  mutableEnv.NODE_ENV = "test";
-  mutableEnv.E2E_MODE = "false";
-  delete mutableEnv.GOOGLE_CLIENT_ID;
-  delete mutableEnv.GOOGLE_CLIENT_SECRET;
-  const { authOptions } = await import("@/lib/auth");
-  return authOptions;
+  const overrides: Record<string, string | undefined> = {
+    NODE_ENV: "test",
+    E2E_MODE: "false",
+    GOOGLE_CLIENT_ID: undefined,
+    GOOGLE_CLIENT_SECRET: undefined,
+    NEXTAUTH_DEBUG: undefined,
+    ...env,
+  };
+  const previous: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    previous[key] = mutableEnv[key];
+    if (value === undefined) delete mutableEnv[key];
+    else mutableEnv[key] = value;
+  }
+  try {
+    const { authOptions } = await import("@/lib/auth");
+    return authOptions;
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete mutableEnv[key];
+      else mutableEnv[key] = value;
+    }
+    mutableEnv.NODE_ENV = "test";
+  }
 }
 
 describe("auth options", () => {
@@ -128,6 +146,87 @@ describe("auth options", () => {
   it("keeps next-auth debug logging opt-in so provider secrets stay out of logs", async () => {
     const authOptions = await loadAuthOptions();
     expect(authOptions.debug).toBe(false);
+  });
+
+  it("allows opting into debug logging outside production", async () => {
+    const authOptions = await loadAuthOptions({ NEXTAUTH_DEBUG: "true" });
+    expect(authOptions.debug).toBe(true);
+  });
+
+  it("never enables debug logging in production, even with NEXTAUTH_DEBUG=true", async () => {
+    // Regression guard: NEXTAUTH_DEBUG=true on the production host previously
+    // dumped the full provider config — Google client secret included — plus
+    // state/PKCE cookies into Railway logs.
+    const authOptions = await loadAuthOptions({
+      NODE_ENV: "production",
+      NEXTAUTH_DEBUG: "true",
+    });
+    expect(authOptions.debug).toBe(false);
+  });
+
+  it("redacts provider secrets and cookie values from debug log metadata", async () => {
+    const authOptions = await loadAuthOptions();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      // Shape mirrors next-auth's GET_AUTHORIZATION_URL debug event.
+      authOptions.logger?.debug?.("GET_AUTHORIZATION_URL", {
+        url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc",
+        cookies: [
+          { name: "next-auth.pkce.code_verifier", value: "pkce-verifier-value" },
+          { name: "next-auth.state", value: "state-cookie-value" },
+        ],
+        provider: {
+          id: "google",
+          clientId: "public-client-id",
+          clientSecret: "GOCSPX-super-secret",
+          callbackUrl: "https://app.example.com/api/auth/callback/google",
+        },
+      });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const [prefix, code, metadata] = logSpy.mock.calls[0];
+      expect(prefix).toBe("[next-auth][debug]");
+      expect(code).toBe("GET_AUTHORIZATION_URL");
+
+      const serialized = JSON.stringify(metadata);
+      expect(serialized).not.toContain("GOCSPX-super-secret");
+      expect(serialized).not.toContain("pkce-verifier-value");
+      expect(serialized).not.toContain("state-cookie-value");
+
+      // Non-sensitive context survives so debug output stays useful.
+      const sanitized = metadata as {
+        url: string;
+        cookies: string;
+        provider: Record<string, string>;
+      };
+      expect(sanitized.url).toContain("accounts.google.com");
+      expect(sanitized.cookies).toBe("[REDACTED]");
+      expect(sanitized.provider.id).toBe("google");
+      expect(sanitized.provider.clientSecret).toBe("[REDACTED]");
+      expect(sanitized.provider.callbackUrl).toContain("/api/auth/callback/google");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("redacts secret-bearing fields from error log metadata while keeping the error", async () => {
+    const authOptions = await loadAuthOptions();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      authOptions.logger?.error?.("OAUTH_CALLBACK_ERROR", {
+        error: new Error("callback failed"),
+        provider: { id: "google", clientSecret: "GOCSPX-super-secret" },
+      } as never);
+
+      const [, , metadata] = errorSpy.mock.calls[0];
+      const serialized = JSON.stringify(metadata);
+      expect(serialized).not.toContain("GOCSPX-super-secret");
+      expect(serialized).toContain("callback failed");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("bootstraps a development organization for credential logins without one", async () => {
