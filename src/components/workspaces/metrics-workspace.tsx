@@ -13,7 +13,7 @@ interface MetricRow {
 }
 
 const DASHBOARDS = [
-  { title: "Company Tracker", href: "/metrics/company", description: "Founder cockpit for revenue, burn, runway, funnel, activation, and operating risk." },
+  { title: "Company Tracker", href: "/operating/company", description: "Founder cockpit for revenue, burn, runway, funnel, activation, and operating risk." },
   { title: "Customer Health", href: "/metrics/customer-health", description: "Portfolio health, account coverage, renewal risk, and customer-success source quality." },
   { title: "Expenses", href: "/metrics/expenses", description: "Finance dashboard for spend, vendors, categories, runway, variance, and planning inputs." },
   { title: "Goals", href: "/goals", description: "Company goals and progress tied to Linear projects and operating priorities." },

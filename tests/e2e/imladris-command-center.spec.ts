@@ -4,12 +4,13 @@ import { TEST_INVESTOR } from './helpers/test-data';
 
 test.describe('Imladris command center smoke', () => {
   test('operator can open the company-health command center and report workspace', async ({ page }) => {
-    await page.goto('/metrics/company');
+    // Legacy URL redirects to the redesigned founder cockpit, preserving the query.
+    await page.goto('/metrics/company?demo');
+    await expect(page).toHaveURL(/\/operating\/company\?demo/);
 
+    // Demo opt-in renders the deterministic cockpit, loudly labeled.
     await expect(page.getByRole('heading', { name: 'Company Tracker' })).toBeVisible();
-    await expect(page.getByText('Healthy ARR Growth')).toBeVisible();
-    await expect(page.getByText('Benchmark Context')).toBeVisible();
-    await expect(page.getByText('Board Readiness')).toBeVisible();
+    await expect(page.getByText(/Demo data — not connected to live Imladris metrics/)).toBeVisible();
 
     await page.goto('/reports');
     await expect(page.getByRole('heading', { name: 'Executive Report Packs' })).toBeVisible();

@@ -8,6 +8,7 @@
 
 import { Activity, AlertTriangle, ChevronLeft, ChevronRight, Clock, Download, Plug, ShieldCheck } from "lucide-react";
 import { buildAttention } from "./attention";
+import { downloadDashboardCsv } from "./export-csv";
 import { monthName } from "./format";
 import styles from "./imladris-dashboard.module.css";
 import type { DashboardDefinition, ImladrisModel } from "./types";
@@ -132,7 +133,13 @@ export function TopBar({ dashboard, model, idx, months, dataSource, onMonth }: T
       ) : (
         <MonthSwitcher months={months} idx={idx} onChange={onMonth} />
       )}
-      <button type="button" className={styles.btnIcon} aria-label="Export">
+      <button
+        type="button"
+        className={styles.btnIcon}
+        aria-label="Export CSV"
+        title={`Export ${dashboard.label} metrics for ${monthName(months[idx])} as CSV`}
+        onClick={() => downloadDashboardCsv(model, dashboard, idx)}
+      >
         <Download size={16} />
       </button>
     </header>
