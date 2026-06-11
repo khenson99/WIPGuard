@@ -554,6 +554,42 @@ describe('sync orchestrator', () => {
     expect(results[0].error).toContain('imladris: 1 canonical materialization failure');
   });
 
+  it('marks analytics module failed when growth-control pruning fails', async () => {
+    vi.mocked(runAnalyticsSync).mockResolvedValueOnce({
+      refresh: {
+        usersProcessed: 1,
+        refreshCount: 4,
+        failureCount: 0,
+        completedAt: '2026-06-10T12:00:00.000Z',
+      },
+      pruning: { deleted: 0 },
+      imladris: [],
+      lineagePruning: { error: 'lineage prune exploded' },
+      outboxPruning: { error: 'outbox prune exploded' },
+    } as never);
+
+    const results = await runSync(mockPrisma, {
+      hubspot: false,
+      slack: false,
+      coda: false,
+      google: false,
+      providerRules: false,
+      visitorFunnelEnrichment: false,
+      analytics: true,
+      automations: false,
+      healthChecks: false,
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        module: 'analytics',
+        success: false,
+        error:
+          'lineage_pruning: lineage prune exploded; outbox_pruning: outbox prune exploded',
+      }),
+    ]);
+  });
+
   it('marks provider-rules module failed when user-level rule runs fail', async () => {
     vi.mocked(runRules).mockResolvedValueOnce({
       executedRules: 2,

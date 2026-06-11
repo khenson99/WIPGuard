@@ -25,6 +25,14 @@ import type { PrismaClientType } from '@/lib/prisma';
 import { runAnalyticsRefresh } from '@/lib/analytics/refresh-runner';
 import { pruneAnalyticsSnapshots } from '@/lib/analytics/snapshots';
 import {
+  pruneOutboxEvents,
+  type PruneOutboxEventsResult,
+} from '@/lib/events/outbox-retention';
+import {
+  pruneImladrisMetricLineage,
+  type PruneImladrisMetricLineageResult,
+} from '@/lib/imladris/lineage-retention';
+import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
@@ -46,10 +54,26 @@ export interface AnalyticsSyncInput {
   now?: Date;
 }
 
+/**
+ * Outcome of a growth-control pruning pass. A failed pass is captured as
+ * `{ error }` instead of throwing so retention hiccups cannot abort the
+ * analytics sync — but callers (orchestrator + cron route) surface the error
+ * as a partial failure so a silently regrowing table stays visible.
+ */
+export type GrowthPruneOutcome<T> = T | { error: string };
+
 export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
   imladris: ImladrisMaterializationSyncResult[];
+  /**
+   * Growth controls for the two unbounded tables behind the 2026-06-10
+   * disk-full outage. Named *Pruning (not *Retention) because the cron sync
+   * response already has a `retention` field for the customer-retention
+   * domain.
+   */
+  lineagePruning: GrowthPruneOutcome<PruneImladrisMetricLineageResult>;
+  outboxPruning: GrowthPruneOutcome<PruneOutboxEventsResult>;
 }
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
@@ -239,5 +263,27 @@ export async function runAnalyticsSync(
     }),
   ]);
 
-  return { refresh, pruning, imladris };
+  // Growth-control retention for the two unbounded tables (lineage detail of
+  // superseded metric values; terminal outbox events). Runs after
+  // materialization so pruning never contends with this cycle's lineage
+  // writes. Both passes are time-budgeted and resume next cycle, so the
+  // initial multi-million-row backlog drains incrementally.
+  const lineagePruning = await pruneImladrisMetricLineage({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneImladrisMetricLineageResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.lineage_pruning_failed', { error: message });
+    return { error: message };
+  });
+  const outboxPruning = await pruneOutboxEvents({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneOutboxEventsResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.outbox_pruning_failed', { error: message });
+    return { error: message };
+  });
+
+  return { refresh, pruning, imladris, lineagePruning, outboxPruning };
 }

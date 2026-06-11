@@ -104,6 +104,19 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
     );
   }
 
+  // Growth-control pruning failures (see src/lib/sync/analytics.ts). These
+  // must stay loud: an unnoticed retention failure is how ImladrisMetricLineage
+  // filled the database volume on 2026-06-10.
+  for (const [field, label] of [
+    ['lineagePruning', 'lineage_pruning'],
+    ['outboxPruning', 'outbox_pruning'],
+  ] as const) {
+    const outcome = asRecord(record[field]);
+    if (typeof outcome?.error === 'string' && outcome.error.trim().length > 0) {
+      failures.push(`${label}: ${outcome.error}`);
+    }
+  }
+
   return failures;
 }
 
