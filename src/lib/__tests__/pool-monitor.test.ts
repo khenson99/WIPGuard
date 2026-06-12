@@ -60,16 +60,40 @@ describe("PoolMonitor", () => {
     expect(metrics.lastErrorAt).toBeTruthy();
   });
 
-  it("should not attach twice", () => {
-    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
+  it("does not duplicate listeners when attaching the same pool twice", () => {
     PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
     PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Already attached")
-    );
-    consoleSpy.mockRestore();
+    // Listeners must not be doubled — one connect event = one counted connection.
+    mockPool.emit("connect");
+    const metrics = PoolMonitorModule.poolMonitor.getMetrics();
+    expect(metrics.totalConnectionsCreated).toBe(1);
+  });
+
+  it("re-attaches to a new pool and preserves cumulative counters", () => {
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
+    mockPool.emit("connect");
+
+    // Simulates resetPrismaClient() creating a fresh pool between cron cycles.
+    const newPool = Object.assign(new EventEmitter(), {
+      totalCount: 2,
+      idleCount: 1,
+      waitingCount: 0,
+    });
+    PoolMonitorModule.poolMonitor.attach(newPool as unknown as Pool, 30);
+    newPool.emit("connect");
+
+    const metrics = PoolMonitorModule.poolMonitor.getMetrics();
+    expect(metrics.totalConnectionsCreated).toBe(2); // 1 old pool + 1 new pool
+    expect(metrics.maxPoolSize).toBe(30);
+    expect(metrics.totalConnections).toBe(2); // reads from the NEW pool
+    expect(metrics.idleConnections).toBe(1);
+
+    // The old pool's listeners remain attached (harmless in production —
+    // resetPrismaClient() end()s the old pool before a new one is created),
+    // so a stray old-pool event still counts exactly once.
+    mockPool.emit("connect");
+    expect(PoolMonitorModule.poolMonitor.getMetrics().totalConnectionsCreated).toBe(3);
   });
 
   it("should record wait times and calculate average", () => {

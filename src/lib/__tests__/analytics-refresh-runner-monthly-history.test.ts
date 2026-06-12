@@ -440,17 +440,20 @@ describe("analytics monthly financial history refresh", () => {
       rangePresets: [],
     });
 
+    // providerKey "googleWorkspace" is the unconditional refresh job (the
+    // "product" job is disabled — it ran heavy Imladris metric queries during
+    // refresh and contributed to the June 2026 OOM).
     expect(storeAnalyticsSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-1",
-        providerKey: "product",
+        providerKey: "googleWorkspace",
         contextKey: "default",
         rangePreset: "30d",
       }),
     );
   });
 
-  it("runs rolling product snapshots inside the user's organization context", async () => {
+  it("skips product snapshots during refresh (Imladris materialization owns them)", async () => {
     vi.mocked(getCredentials).mockResolvedValue({} as never);
     vi.mocked(buildImladrisMetrics).mockImplementation((async () => {
       if (getRequestContext()?.organizationId !== "org-1") {
@@ -476,16 +479,14 @@ describe("analytics monthly financial history refresh", () => {
     });
 
     expect(result.failureCount).toBe(0);
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { id: "user-1" },
-      select: { organizationId: true },
-    });
-    expect(storeAnalyticsSnapshot).toHaveBeenCalledWith(
+    // The product snapshot job is intentionally disabled during refresh:
+    // computeProductSnapshot -> buildImladrisMetrics loads all canonical
+    // metric values + lineage, and those metrics are already materialized by
+    // runImladrisMaterializationSync after the refresh phase (June 2026 OOM fix).
+    expect(buildImladrisMetrics).not.toHaveBeenCalled();
+    expect(storeAnalyticsSnapshot).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-1",
         providerKey: "product",
-        contextKey: "default",
-        rangePreset: "7d",
       }),
     );
   });

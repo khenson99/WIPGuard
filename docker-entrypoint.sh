@@ -32,4 +32,13 @@ esac
 
 echo "Starting server..."
 export HOSTNAME=${HOSTNAME:-0.0.0.0}
-exec node server.js
+
+# --max-old-space-size: BAND-AID, not a fix. Sizes the V8 heap to the Railway
+# container instead of V8's ~4 GB default so a regression of the analytics
+# leak degrades slowly instead of crash-cycling every ~20 minutes. Keep this
+# below the container memory limit (leave ~2 GB for non-heap RSS). Override
+# via NODE_MAX_OLD_SPACE_MB in Railway service variables.
+# --expose-gc: required by /api/cron/sync, which calls gc() between sync
+# phases to release provider payload buffers (see executeCronSync).
+NODE_MAX_OLD_SPACE_MB="${NODE_MAX_OLD_SPACE_MB:-6144}"
+exec node --expose-gc --max-old-space-size="${NODE_MAX_OLD_SPACE_MB}" server.js

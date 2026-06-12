@@ -60,6 +60,7 @@ vi.mock("@/lib/retention/pipeline", () => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({
+  resetPrismaClient: vi.fn(async () => {}),
   prisma: {
     integrationConnection: {
       findMany: (...args: unknown[]) => mockIntegrationConnectionFindMany(...args),
@@ -240,10 +241,12 @@ describe("POST /api/cron/sync", () => {
     expect(runRules).toHaveBeenCalledOnce();
     expect(runHealthChecksSync).toHaveBeenCalledOnce();
     expect(materializeRetentionCurrent).toHaveBeenCalledOnce();
+    // The degraded log is intentionally trimmed to just `failures` — logging
+    // the full result body retained provider payloads across cron cycles
+    // (part of the June 2026 OOM leak fix).
     expect(consoleError).toHaveBeenCalledWith(
       "POST /api/cron/sync background degraded:",
       expect.objectContaining({
-        ok: false,
         failures: ["health: 1 user health check failed"],
       }),
     );

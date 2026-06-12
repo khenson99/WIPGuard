@@ -39,7 +39,10 @@ function parseRetentionDays(): number {
   return 30;
 }
 
-
+function shouldWaitForCompletion(request: NextRequest): boolean {
+  const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
+  return wait === "1" || wait === "true";
+}
 
 async function runRetentionMaterialization(input: {
   ownerUserId: string | null;
@@ -523,6 +526,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ownerUserId,
       message: "No recoverable integrations found — nothing to sync",
     });
+  }
+
+  if (shouldWaitForCompletion(request)) {
+    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    // Same post-cycle cleanup as the background path: release accumulated
+    // Prisma/pg adapter state before returning.
+    await resetPrismaClient();
+    (globalThis as unknown as { gc?: () => void }).gc?.();
+    return NextResponse.json(result.body, { status: result.status });
   }
 
   after(async () => {

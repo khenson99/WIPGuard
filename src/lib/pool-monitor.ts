@@ -50,18 +50,25 @@ class PoolMonitor {
 
   /**
    * Attach monitoring hooks to a pg Pool instance.
-   * Should be called once during initialization.
+   *
+   * May be called again with a NEW pool (e.g. after resetPrismaClient()
+   * recreates the client between cron sync cycles) — monitoring moves to
+   * the new pool and cumulative counters are preserved. Re-attaching the
+   * same pool is a no-op so event listeners are never duplicated.
    */
   attach(pool: Pool, maxPoolSize: number): void {
     if (this.isAttached) {
-      console.warn("[PoolMonitor] Already attached to a pool, skipping.");
-      return;
+      if (this.pool === pool) {
+        return;
+      }
+      console.log("[PoolMonitor] Re-attaching to a new pool (previous pool was reset).");
+    } else {
+      this.startTime = Date.now();
     }
 
     this.pool = pool;
     this.maxPoolSize = maxPoolSize;
     this.isAttached = true;
-    this.startTime = Date.now();
 
     pool.on("connect", () => {
       this.totalConnectionsCreated++;
