@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { runHealthChecksSync } from "@/lib/sync/health-checks";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
@@ -18,7 +19,7 @@ import {
   bestEffortMigrateRulesToOwner,
   ensureIntegrationOwnerOrganizationId,
 } from "@/lib/integrations/ownership";
-import { prisma } from "@/lib/prisma";
+import { prisma, resetPrismaClient } from "@/lib/prisma";
 import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
 
 function isAuthorized(request: NextRequest): boolean {
@@ -38,10 +39,7 @@ function parseRetentionDays(): number {
   return 30;
 }
 
-function shouldWaitForCompletion(request: NextRequest): boolean {
-  const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
-  return wait === "1" || wait === "true";
-}
+
 
 async function runRetentionMaterialization(input: {
   ownerUserId: string | null;
@@ -360,7 +358,33 @@ async function executeCronSync(input: {
     // and this cron route stay in lockstep. We destructure the combined
     // result back into separate `analytics` and `pruning` response fields
     // to preserve the external response-body shape that monitoring depends on.
-    const [analyticsSyncResult, rulesResult, healthResult, retentionResult] = await Promise.allSettled([
+    //
+    // NOTE: These operations run SEQUENTIALLY instead of via Promise.allSettled
+    // to avoid holding all provider API payloads in memory simultaneously.
+    // Running them in parallel caused RSS to spike to ~3.4 GB and OOM.
+    // Sequential execution keeps peak memory bounded to a single operation's
+    // footprint at a time. See memory leak investigation (Jun 2026).
+    async function settleAsync<T>(fn: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+      try {
+        return { status: "fulfilled", value: await fn() };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    }
+
+    function logMemory(label: string) {
+      const mem = process.memoryUsage();
+      console.error(`[cron-sync:mem] ${label}`, {
+        rss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
+        heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)} MB`,
+        external: `${Math.round(mem.external / 1024 / 1024)} MB`,
+        arrayBuffers: `${Math.round(mem.arrayBuffers / 1024 / 1024)} MB`,
+      });
+    }
+
+    logMemory("before-analytics");
+    let analyticsSyncResult = await settleAsync(() =>
       runAnalyticsSync({
         prisma,
         userIds,
@@ -368,18 +392,36 @@ async function executeCronSync(input: {
         includeMonthlyFinancialHistory: true,
         pruneOlderThanDays: parseRetentionDays(),
       }),
+    );
+
+    // Force GC between phases to reclaim query result buffers.
+    // Requires NODE_OPTIONS="--expose-gc --max-old-space-size=4096".
+    (globalThis as unknown as { gc?: () => void }).gc?.();
+    logMemory("after-analytics");
+    let rulesResult = await settleAsync(() =>
       runRules({
         mode: "incremental",
         dryRun: false,
         userIds,
         startedAt,
       }),
-      // Health checks run per-user; shared with the orchestrator —
-      // see src/lib/sync/health-checks.ts. The returned array preserves
-      // the cron route's prior `settled.health` shape.
+    );
+
+    (globalThis as unknown as { gc?: () => void }).gc?.();
+    logMemory("after-rules");
+    // Health checks run per-user; shared with the orchestrator —
+    // see src/lib/sync/health-checks.ts. The returned array preserves
+    // the cron route's prior `settled.health` shape.
+    let healthResult = await settleAsync(() =>
       runHealthChecksSync({ prisma, userIds }),
+    );
+
+    (globalThis as unknown as { gc?: () => void }).gc?.();
+    logMemory("after-health");
+    let retentionResult = await settleAsync(() =>
       runRetentionMaterialization({ ownerUserId, userIds }),
-    ]);
+    );
+    logMemory("after-retention");
 
     const settled = {
       analytics: null as unknown,
@@ -400,6 +442,9 @@ async function executeCronSync(input: {
       failures.push(`analytics: ${msg}`);
       console.error("POST /api/cron/sync analytics failed:", analyticsSyncResult.reason);
     }
+    // Release the full analytics result (contains all Imladris materialization
+    // data). We've already extracted refresh + pruning into `settled`.
+    analyticsSyncResult = null as unknown as typeof analyticsSyncResult;
     if (rulesResult.status === "fulfilled") {
       settled.rules = rulesResult.value;
       failures.push(...collectRulesPartialFailures(rulesResult.value));
@@ -408,6 +453,7 @@ async function executeCronSync(input: {
       failures.push(`rules: ${msg}`);
       console.error("POST /api/cron/sync rules failed:", rulesResult.reason);
     }
+    rulesResult = null as unknown as typeof rulesResult;
     if (healthResult.status === "fulfilled") {
       settled.health = healthResult.value;
       failures.push(...collectHealthPartialFailures(healthResult.value));
@@ -416,6 +462,7 @@ async function executeCronSync(input: {
       failures.push(`health: ${msg}`);
       console.error("POST /api/cron/sync health failed:", healthResult.reason);
     }
+    healthResult = null as unknown as typeof healthResult;
     if (retentionResult.status === "fulfilled") {
       settled.retention = retentionResult.value;
     } else {
@@ -423,6 +470,7 @@ async function executeCronSync(input: {
       failures.push(`retention: ${msg}`);
       console.error("POST /api/cron/sync retention materialization failed:", retentionResult.reason);
     }
+    retentionResult = null as unknown as typeof retentionResult;
 
     return {
       status: 200,
@@ -477,20 +525,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  if (shouldWaitForCompletion(request)) {
-    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
-    return NextResponse.json(result.body, { status: result.status });
-  }
-
   after(async () => {
     const result = await executeCronSync({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
-      console.error("POST /api/cron/sync background error:", result.body);
-      return;
+      console.error("POST /api/cron/sync background error:", {
+        status: result.status,
+        error: (result.body as Record<string, unknown>).error ?? "unknown",
+      });
+    } else if (isDegradedSyncBody(result.body)) {
+      console.error("POST /api/cron/sync background degraded:", {
+        failures: (result.body as Record<string, unknown>).failures ?? [],
+      });
     }
-    if (isDegradedSyncBody(result.body)) {
-      console.error("POST /api/cron/sync background degraded:", result.body);
-    }
+
+    // Reset the Prisma client to release accumulated adapter state
+    // (prepared statements, result buffers, query plan caches) that
+    // grows by ~475 MB per cycle. The next query will lazily create
+    // a fresh client and connection pool.
+    await resetPrismaClient();
+    (globalThis as unknown as { gc?: () => void }).gc?.();
   });
 
   return NextResponse.json(

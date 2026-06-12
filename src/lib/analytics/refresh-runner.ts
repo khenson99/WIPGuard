@@ -322,6 +322,7 @@ async function persistImladrisRawSnapshot(input: {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function computeProductSnapshot(input: {
   userId: string;
   organizationId: string | null;
@@ -768,17 +769,22 @@ async function refreshForUserAndRange(input: {
     });
   }
 
-  jobs.push({
-    providerKey: "product",
-    tracksConnectionFreshness: false,
-    run: () =>
-      computeProductSnapshot({
-        userId: input.userId,
-        organizationId,
-        fromDate,
-        toDate,
-      }),
-  });
+  // TEMPORARILY DISABLED: computeProductSnapshot calls buildImladrisMetrics
+  // which runs heavy DB queries loading all canonical metric values + lineage.
+  // These metrics are already materialized by runImladrisMaterializationSync
+  // (called after the refresh phase). Running them here during the refresh
+  // causes the OOM. Will re-enable after fixing the underlying query weight.
+  // jobs.push({
+  //   providerKey: "product",
+  //   tracksConnectionFreshness: false,
+  //   run: () =>
+  //     computeProductSnapshot({
+  //       userId: input.userId,
+  //       organizationId,
+  //       fromDate,
+  //       toDate,
+  //     }),
+  // });
 
   jobs.push({
     providerKey: "googleWorkspace",
@@ -844,7 +850,7 @@ async function refreshForUserAndRange(input: {
     const provider = providerForSnapshotKey(job.providerKey);
 
     try {
-      const payload = await runRefreshJobWithRetry(job);
+      let payload = await runRefreshJobWithRetry(job);
       assertRefreshPayloadComplete(job.providerKey, payload);
       const capturedAt = new Date();
       await persistImladrisRawSnapshot({
@@ -872,6 +878,9 @@ async function refreshForUserAndRange(input: {
         payload,
         expiresAt,
       });
+      // Explicitly release the payload reference so V8 can GC it
+      // before the next provider iteration.
+      payload = null as unknown as typeof payload;
       refreshed += 1;
       if (job.tracksConnectionFreshness !== false) {
         recordProviderOutcome(providerOutcomes, provider, { success: true });

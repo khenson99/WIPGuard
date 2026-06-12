@@ -90,4 +90,34 @@ export const prisma = new Proxy({} as PrismaClientType, {
   },
 });
 
+/**
+ * Disconnect the Prisma client and drain the pg pool, then clear the
+ * cached singleton so the next query creates a fresh client.
+ *
+ * Call this between heavy batch operations (e.g. cron sync cycles) to
+ * release accumulated Prisma/pg adapter state that accumulates across
+ * hundreds of queries (prepared statements, result buffers, etc.).
+ */
+export async function resetPrismaClient(): Promise<void> {
+  const client = globalForPrisma.prisma;
+  const pool = globalForPrisma.pgPool;
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.pgPool = undefined;
+
+  if (client) {
+    try {
+      await (client as unknown as { $disconnect?: () => Promise<void> }).$disconnect?.();
+    } catch (e) {
+      console.warn("[Prisma] $disconnect error during reset:", e);
+    }
+  }
+  if (pool) {
+    try {
+      await pool.end();
+    } catch (e) {
+      console.warn("[Prisma] pool.end error during reset:", e);
+    }
+  }
+}
+
 export default prisma;
