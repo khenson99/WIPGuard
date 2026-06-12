@@ -224,7 +224,7 @@ function splitMigrationSql(sql) {
   };
 }
 
-async function run() {
+function resolvePoolOptions() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     if (process.env.NODE_ENV === "production") {
@@ -262,8 +262,80 @@ async function run() {
   if (useSSL) {
     poolOptions.ssl = { rejectUnauthorized: true };
   }
+  return poolOptions;
+}
 
-  const pool = new Pool(poolOptions);
+function listMigrationDirs() {
+  return fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((d) => {
+      const p = path.join(MIGRATIONS_DIR, d);
+      return (
+        fs.statSync(p).isDirectory() &&
+        fs.existsSync(path.join(p, "migration.sql"))
+      );
+    })
+    .sort();
+}
+
+function computePendingMigrations(localDirs, appliedNames) {
+  const appliedSet = new Set(appliedNames);
+  return localDirs.filter((dir) => !appliedSet.has(dir));
+}
+
+/**
+ * Read-only schema currency check (`node migrate.cjs --check`).
+ *
+ * Exit codes: 0 = every local migration is applied, 2 = migrations pending,
+ * 1 = error (DB unreachable, bad URL, ...).
+ *
+ * Used by docker-entrypoint.sh as a fast boot-path gate: on Railway the
+ * actual apply happens in `preDeployCommand` before the previous deploy is
+ * stopped, so the serving container only needs to verify currency — one
+ * connection and one query instead of advisory lock + table bootstrap +
+ * per-migration apply loop. Uses the same applied-set criterion as run()
+ * (rolled_back_at IS NULL) so the two modes always agree.
+ */
+async function check() {
+  const pool = new Pool(resolvePoolOptions());
+  let exitCode = 0;
+  try {
+    const localDirs = listMigrationDirs();
+    const tracking = await pool.query(
+      `SELECT to_regclass('public."_prisma_migrations"') IS NOT NULL AS found`,
+    );
+    if (!tracking.rows?.[0]?.found) {
+      console.log(
+        `Schema check: _prisma_migrations table missing; ${localDirs.length} migration(s) pending`,
+      );
+      exitCode = 2;
+    } else {
+      const applied = await pool.query(
+        'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL',
+      );
+      const pending = computePendingMigrations(
+        localDirs,
+        applied.rows.map((row) => row.migration_name),
+      );
+      if (pending.length > 0) {
+        console.log(
+          `Schema check: ${pending.length} pending migration(s): ${pending.join(", ")}`,
+        );
+        exitCode = 2;
+      } else {
+        console.log(
+          `Schema check: current (all ${localDirs.length} local migrations applied)`,
+        );
+      }
+    }
+  } finally {
+    await pool.end();
+  }
+  process.exit(exitCode);
+}
+
+async function run() {
+  const pool = new Pool(resolvePoolOptions());
   const client = await pool.connect();
   let lockAcquired = false;
 
@@ -297,16 +369,7 @@ async function run() {
     const appliedSet = new Set(applied.rows.map((r) => r.migration_name));
 
     // Get migration directories in order
-    const dirs = fs
-      .readdirSync(MIGRATIONS_DIR)
-      .filter((d) => {
-        const p = path.join(MIGRATIONS_DIR, d);
-        return (
-          fs.statSync(p).isDirectory() &&
-          fs.existsSync(path.join(p, "migration.sql"))
-        );
-      })
-      .sort();
+    const dirs = listMigrationDirs();
 
     let appliedCount = 0;
     for (const dir of dirs) {
@@ -383,8 +446,19 @@ async function run() {
   }
 }
 
-run().catch((e) => {
-  const message = e instanceof Error ? e.message : String(e);
-  console.error("Migration failed:", message);
-  process.exit(1);
-});
+if (require.main === module) {
+  const checkMode = process.argv.includes("--check");
+  const entry = checkMode ? check : run;
+  entry().catch((e) => {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(checkMode ? "Schema check failed:" : "Migration failed:", message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  computePendingMigrations,
+  listMigrationDirs,
+  splitMigrationSql,
+  splitSqlStatements,
+};

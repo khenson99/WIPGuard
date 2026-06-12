@@ -7,6 +7,9 @@
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/api/health/live",
-    "healthcheckTimeout": 120
+    "healthcheckTimeout": 120,
+    "preDeployCommand": "node /app/migrate.cjs",
+    "overlapSeconds": 60,
+    "drainingSeconds": 30
   }
 }
