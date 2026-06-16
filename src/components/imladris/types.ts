@@ -64,7 +64,8 @@ export interface NormalizedMetric {
   dept: string;
   unit: MetricUnit;
   good: GoodDirection;
-  value: number;
+  /** Live mode: `null` when the metrics API published no value for this metric. */
+  value: number | null;
   history: number[];
   liveTrend: boolean;
   status: MetricStatus;

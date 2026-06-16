@@ -43,7 +43,10 @@ export function buildAttention(model: ImladrisModel, idx: number): AttentionItem
   // 2. anomalies + goal pacing
   model.metrics.forEach((m) => {
     const snap = snapshot(m, idx);
-    const d = deltaPct(snap.value, snap.prev);
+    // A metric with no live value can't be an anomaly or off-target signal.
+    if (snap.value == null) return;
+    const value = snap.value;
+    const d = deltaPct(value, snap.prev);
     if (d != null) {
       const up = d > 0;
       const bad = m.good === "down" ? up : !up;
@@ -60,18 +63,18 @@ export function buildAttention(model: ImladrisModel, idx: number): AttentionItem
       }
     }
     if (m.target != null) {
-      const st = paceState(snap.value, m.target, m.good);
+      const st = paceState(value, m.target, m.good);
       if (st === "behind") {
         const gap =
           m.good === "down"
-            ? ((snap.value - m.target) / m.target) * 100
-            : ((m.target - snap.value) / m.target) * 100;
+            ? ((value - m.target) / m.target) * 100
+            : ((m.target - value) / m.target) * 100;
         if (gap >= 6) {
           items.push({
             sev: gap >= 18 ? "warning" : "info",
             tag: "Off target",
             title: `${m.label} behind plan`,
-            desc: `${fmtMetric(m, snap.value)} vs ${m.targetLabel || fmtByUnit(m.target, m.unit)} target.`,
+            desc: `${fmtMetric(m, value)} vs ${m.targetLabel || fmtByUnit(m.target, m.unit)} target.`,
             metricKey: m.key,
             mag: gap,
           });

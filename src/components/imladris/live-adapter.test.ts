@@ -128,6 +128,47 @@ describe("loadImladrisData — live-or-error gating", () => {
   });
 });
 
+describe("loadImladrisData — no seeded sample values leak in live mode", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("clears the seeded value when the API returns a metric without a value (renders empty, not a demo number)", async () => {
+    installFetch((url) => {
+      if (url.includes("/api/imladris/metrics") && !url.includes("history")) {
+        return {
+          ok: true,
+          json: {
+            metrics: [
+              { key: "revenue.arr", value: { amount: 5_000_000 }, status: "ready" },
+              // Matched canonical metric, but the source errored so there's no value.
+              { key: "revenue.mrr", value: null, status: "error" },
+            ],
+          },
+        };
+      }
+      return respondAllOk(url);
+    });
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const mrr = result.data.metricByKey["revenue.mrr"];
+    // NOT the seeded 353_000 — an honest empty state instead of a fabricated number.
+    expect(mrr.value).toBeNull();
+    expect(mrr.history).toEqual([]);
+    expect(mrr.status).toBe("error");
+  });
+
+  it("does not surface seeded values for metrics absent from the live /metrics payload", async () => {
+    installFetch(respondAllOk); // payload only carries revenue.arr + finance.net_burn
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const mrr = result.data.metricByKey["revenue.mrr"];
+    expect(mrr.value).toBeNull();
+    expect(mrr.history).toEqual([]);
+  });
+});
+
 describe("loadImladrisData — trend gating (live-or-error for sparklines)", () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.unstubAllGlobals());

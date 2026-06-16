@@ -204,7 +204,8 @@ function flatFillRest(model: ImladrisModel, len: number): void {
   model.metrics.forEach((m) => {
     if (m.liveTrend) return;
     m.liveTrend = false;
-    m.history = new Array<number>(len).fill(m.value == null ? 0 : m.value);
+    // No live value ⇒ empty history ⇒ renders "—" (never a seeded sample value).
+    m.history = m.value == null ? [] : new Array<number>(len).fill(m.value);
   });
 }
 
@@ -352,6 +353,15 @@ export async function loadImladrisData(): Promise<LoadResult> {
 
   const model = buildImladrisModel();
   model.mode = "live";
+  // Live-or-error: the seed model contributes STRUCTURE only (labels, units,
+  // targets, cohort scaffolding) — never its sample VALUES. Clear every seeded
+  // value up front so any metric the API omits, or returns without a value,
+  // renders as an honest empty state ("—") instead of a fabricated demo number.
+  for (const m of model.metrics) {
+    m.value = null;
+    m.history = [];
+    m.liveTrend = false;
+  }
 
   const metricsPayload = metricsR.value as MetricsApiResponse;
   const matched = mergeMetrics(model, metricsPayload);
@@ -380,7 +390,7 @@ export async function loadImladrisData(): Promise<LoadResult> {
   if (!trends.available) {
     model.metrics.forEach((m) => {
       m.liveTrend = false;
-      m.history = [m.value == null ? 0 : m.value];
+      m.history = m.value == null ? [] : [m.value];
     });
     model.months = [model.currentMonth || IMLADRIS_FALLBACK_MONTH(model)];
   }
