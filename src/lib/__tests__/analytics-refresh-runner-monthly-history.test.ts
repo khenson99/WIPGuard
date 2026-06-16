@@ -432,7 +432,10 @@ describe("analytics monthly financial history refresh", () => {
     });
   });
 
-  it("keeps empty rangePresets compatible with the default rolling refresh", async () => {
+  // SKIPPED: asserts the "product" snapshot, which refreshForUserAndRange
+  // temporarily disables to prevent OOM (see the "TEMPORARILY DISABLED" block
+  // in refresh-runner.ts). Un-skip when computeProductSnapshot is re-enabled.
+  it.skip("keeps empty rangePresets compatible with the default rolling refresh", async () => {
     vi.mocked(getCredentials).mockResolvedValue({} as never);
 
     await runAnalyticsRefresh({
@@ -450,7 +453,10 @@ describe("analytics monthly financial history refresh", () => {
     );
   });
 
-  it("runs rolling product snapshots inside the user's organization context", async () => {
+  // SKIPPED: product snapshots are temporarily disabled in refreshForUserAndRange
+  // to prevent OOM (see the "TEMPORARILY DISABLED" block in refresh-runner.ts).
+  // Un-skip when computeProductSnapshot is re-enabled.
+  it.skip("runs rolling product snapshots inside the user's organization context", async () => {
     vi.mocked(getCredentials).mockResolvedValue({} as never);
     vi.mocked(buildImladrisMetrics).mockImplementation((async () => {
       if (getRequestContext()?.organizationId !== "org-1") {
