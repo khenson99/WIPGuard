@@ -36,10 +36,21 @@ export interface PoolMetrics {
   uptimeMs: number;
 }
 
+/**
+ * How long after a pool-exhaustion event the health status stays "critical".
+ * Exhaustion previously latched critical forever (a non-zero cumulative
+ * counter), so a single >5 s connection wait early in a container's life made
+ * /api/health report a false, permanent 503 for the rest of that process —
+ * wrong for any monitor/alert/health check consuming it. Recency-based instead,
+ * so the status reflects live conditions while the event stays in the counter.
+ */
+const EXHAUSTION_CRITICAL_WINDOW_MS = 60_000;
+
 class PoolMonitor {
   private totalConnectionsCreated = 0;
   private totalConnectionErrors = 0;
   private totalPoolExhaustionEvents = 0;
+  private lastExhaustionAt: number | null = null;
   private connectionWaitTimes: number[] = [];
   private lastError: string | null = null;
   private lastErrorAt: string | null = null;
@@ -116,6 +127,7 @@ class PoolMonitor {
     // Detect pool exhaustion: if wait time exceeds 5 seconds
     if (waitMs > 5000) {
       this.totalPoolExhaustionEvents++;
+      this.lastExhaustionAt = Date.now();
       console.warn(
         `[PoolMonitor] Pool exhaustion detected! Wait time: ${waitMs}ms (event #${this.totalPoolExhaustionEvents})`
       );
@@ -176,7 +188,13 @@ class PoolMonitor {
       }
     }
 
-    if (metrics.totalPoolExhaustionEvents > 0) {
+    // Recent exhaustion marks the pool critical; older events stay visible in
+    // the cumulative counter but no longer latch the status (a latched 503
+    // would keep /api/health reporting failure long after one transient stall).
+    if (
+      this.lastExhaustionAt !== null &&
+      Date.now() - this.lastExhaustionAt < EXHAUSTION_CRITICAL_WINDOW_MS
+    ) {
       status = "critical";
     }
 
