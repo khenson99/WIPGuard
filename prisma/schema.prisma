@@ -510,6 +510,10 @@ model SecurityAuditEvent {
   @@index([category, createdAt])
   @@index([action, createdAt])
   @@index([actorId, createdAt])
+  // Supports the retention prune predicate (createdAt < cutoff); the
+  // composites above lead with category/action/actorId and cannot seek on
+  // createdAt alone. See src/lib/db-pruning/.
+  @@index([createdAt])
 }
 
 // ============================================================
@@ -2426,6 +2430,10 @@ model ImladrisSourceSyncRun {
   @@index([provider, startedAt])
   @@index([organizationId, provider, startedAt])
   @@index([userId, provider, startedAt])
+  // Supports the retention prune predicate (startedAt < cutoff); the
+  // composites above lead with provider and cannot seek on startedAt
+  // alone. See src/lib/db-pruning/.
+  @@index([startedAt])
 }
 
 model ImladrisRawSourceRecord {
@@ -2452,6 +2460,10 @@ model ImladrisRawSourceRecord {
   @@index([provider, objectType, occurredAt])
   @@index([scopeKey, provider, objectType])
   @@index([organizationId, provider, objectType])
+  // Supports the retention prune predicate (createdAt < cutoff) on the
+  // largest table; no existing index leads with a plain timestamp. See
+  // src/lib/db-pruning/.
+  @@index([createdAt])
 }
 
 model ImladrisCanonicalMetricValue {
