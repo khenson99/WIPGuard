@@ -103,6 +103,20 @@ class PoolMonitor {
   }
 
   /**
+   * Detach from the current pool so a freshly-created pool can re-attach.
+   *
+   * attach() above no-ops when a monitor is already attached, so after a pool
+   * rotation (see resetPrismaClient) the monitor would otherwise stay bound to
+   * the old, drained pool and report stale /api/health metrics. Call this when
+   * swapping pools; the next attach() rebinds to the new pool.
+   */
+  detach(): void {
+    this.isAttached = false;
+    this.pool = null;
+    this.maxPoolSize = 0;
+  }
+
+  /**
    * Record a connection wait time for metrics tracking.
    * Call this when a query completes to track how long it waited for a connection.
    */
