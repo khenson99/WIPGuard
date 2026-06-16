@@ -19,8 +19,18 @@ case "$MIGRATIONS_MODE" in
     echo "Skipping migrations (MIGRATIONS_MODE=skip)"
     ;;
   strict)
-    echo "Running migrations (MIGRATIONS_MODE=strict)..."
-    node /app/migrate.cjs
+    # Fast path: a read-only currency check (one connection, one query)
+    # instead of the full lock + apply loop. On Railway the apply already
+    # happened in preDeployCommand (railway.json) before the previous
+    # deploy stopped, so this is the common path and keeps boot short.
+    # Strict semantics are preserved: pending or unverifiable schema falls
+    # through to the full run, and any failure there still aborts boot.
+    if node /app/migrate.cjs --check; then
+      echo "Migrations current; skipping apply (MIGRATIONS_MODE=strict)"
+    else
+      echo "Running migrations (MIGRATIONS_MODE=strict)..."
+      node /app/migrate.cjs
+    fi
     ;;
   best-effort|*)
     echo "Running migrations (MIGRATIONS_MODE=best-effort)..."

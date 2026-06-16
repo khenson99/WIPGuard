@@ -20,6 +20,7 @@ import {
 } from "@/lib/integrations/ownership";
 import { prisma } from "@/lib/prisma";
 import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
+import { withSyncAdvisoryLock } from "@/lib/sync/sync-lock";
 
 function isAuthorized(request: NextRequest): boolean {
   const expected = process.env.CRON_SYNC_SECRET?.trim() || process.env.INTEGRATION_SYNC_SECRET?.trim();
@@ -476,6 +477,35 @@ async function executeCronSync(input: {
   }
 }
 
+/**
+ * Run the cron sync under the global advisory lock so overlapping cycles are
+ * skipped rather than stacked. Stacked cycles each load large raw-record sets
+ * and were the cause of the WIPGuard-app OOM crash loop — see
+ * src/lib/sync/sync-lock.ts.
+ */
+async function executeCronSyncGuarded(input: {
+  startedAt: string;
+  ownerUserId: string | null;
+  userIds: string[];
+}): Promise<{ status: number; body: Record<string, unknown> }> {
+  const outcome = await withSyncAdvisoryLock(() => executeCronSync(input));
+  if (outcome.ran) {
+    return outcome.result;
+  }
+  console.warn("POST /api/cron/sync skipped:", outcome.reason);
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      skipped: true,
+      reason: outcome.reason,
+      startedAt: input.startedAt,
+      finishedAt: new Date().toISOString(),
+      ownerUserId: input.ownerUserId,
+    },
+  };
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -501,12 +531,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (shouldWaitForCompletion(request)) {
-    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    const result = await executeCronSyncGuarded({ startedAt, ownerUserId, userIds });
     return NextResponse.json(result.body, { status: result.status });
   }
 
   after(async () => {
-    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    const result = await executeCronSyncGuarded({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
       console.error("POST /api/cron/sync background error:", result.body);
       return;

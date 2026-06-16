@@ -9,6 +9,7 @@ import {
   resetThrottleState,
   sendSlackNotification,
   shouldThrottle,
+  throttleStateSize,
   type SlackNotificationPayload,
   type ThrottleConfig,
 } from "@/lib/integrations/slack-notifications";
@@ -141,5 +142,37 @@ describe("slack operating-alert notifications", () => {
         lastError: "Slack is not connected",
       },
     });
+  });
+});
+
+describe("throttle map eviction (memory bound)", () => {
+  beforeEach(() => {
+    resetThrottleState();
+  });
+
+  it("does not retain channels that have gone idle past the window", () => {
+    const windowMs = 60_000;
+    // Many distinct channels each sent to once, long ago.
+    for (let i = 0; i < 100; i++) {
+      recordSend(`C-old-${i}`, 1_000, windowMs);
+    }
+    expect(throttleStateSize()).toBe(100);
+
+    // A later send well outside the window evicts all the now-idle channels;
+    // only the active channel remains.
+    recordSend("C-active", 1_000 + windowMs + 1, windowMs);
+    expect(throttleStateSize()).toBe(1);
+    expect(getThrottleEntry("C-active")).toBeDefined();
+    expect(getThrottleEntry("C-old-0")).toBeUndefined();
+  });
+
+  it("keeps channels that are still active within the window", () => {
+    const windowMs = 60_000;
+    recordSend("C-a", 1_000, windowMs);
+    recordSend("C-b", 1_000, windowMs);
+    // A send only slightly later — both prior channels are still inside the
+    // window, so nothing is evicted.
+    recordSend("C-c", 2_000, windowMs);
+    expect(throttleStateSize()).toBe(3);
   });
 });

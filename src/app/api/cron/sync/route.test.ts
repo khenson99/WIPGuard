@@ -59,6 +59,16 @@ vi.mock("@/lib/retention/pipeline", () => ({
   materializeRetentionCurrent: vi.fn(),
 }));
 
+// The advisory lock is exercised directly in src/lib/sync/__tests__/sync-lock.test.ts.
+// Here it is a transparent pass-through so these tests cover the route's sync
+// behaviour without needing a real pg pool.
+vi.mock("@/lib/sync/sync-lock", () => ({
+  withSyncAdvisoryLock: async (fn: () => Promise<unknown>) => ({
+    ran: true,
+    result: await fn(),
+  }),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     integrationConnection: {
