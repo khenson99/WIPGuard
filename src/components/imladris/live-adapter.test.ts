@@ -118,6 +118,40 @@ describe("loadImladrisData — live-or-error gating", () => {
     expect(result.data.metricByKey["revenue.arr"].sources).toEqual(["stripe", "hubspot"]);
   });
 
+  it("keeps a metric's declared source dependencies even when lineage omits them (no 'feeds 0 metrics')", async () => {
+    installFetch((url) => {
+      if (url.includes("/api/imladris/metrics") && !url.includes("history")) {
+        return {
+          ok: true,
+          json: {
+            metrics: [
+              {
+                key: "marketing.website_traffic",
+                value: { count: 42_000 },
+                status: "partial",
+                // Server caps lineage evidence rows (MAX_LINEAGE_EVIDENCE_ROWS),
+                // so high-volume providers (GA/GSC) can fall outside the window
+                // and aren't cited here. They must NOT be dropped from sources.
+                sourceLineage: [{ sourceKey: "SEMRUSH" }, { sourceKey: "WEBFLOW" }],
+              },
+            ],
+          },
+        };
+      }
+      return respondAllOk(url);
+    });
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const sources = result.data.metricByKey["marketing.website_traffic"].sources;
+    // Declared dependencies survive even though lineage omitted them.
+    expect(sources).toContain("googleAnalytics");
+    expect(sources).toContain("googleSearchConsole");
+    // Lineage-cited providers are still present.
+    expect(sources).toContain("semrush");
+    expect(sources).toContain("webflow");
+  });
+
   it("reads source record counts from latestSyncRun.recordCount and marks degraded state", async () => {
     installFetch(respondAllOk);
     const result = await loadImladrisData();

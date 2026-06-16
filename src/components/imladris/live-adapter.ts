@@ -127,14 +127,20 @@ function mergeMetrics(model: ImladrisModel, payload: MetricsApiResponse): number
       m.warnings = lm.warnings.filter((w): w is string => typeof w === "string");
     }
     // Production route returns `sourceLineage`; the prototype spec read `lineage`.
+    // UNION lineage-discovered providers with the metric's declared dependencies
+    // (the catalog/seed set) — never SHRINK to the lineage subset. The server
+    // caps lineage evidence rows (MAX_LINEAGE_EVIDENCE_ROWS), so a high-volume
+    // provider's rows can fall outside that window; replacing `sources` with the
+    // truncated subset is what made real dependencies (GitHub, Google Analytics,
+    // Search Console) show "feeds 0 metrics" on the sources board.
     const lineage = lm.sourceLineage ?? lm.lineage;
     if (Array.isArray(lineage) && lineage.length) {
-      const keys: ImladrisProviderKey[] = [];
+      const keys: ImladrisProviderKey[] = [...m.sources];
       lineage.forEach((row) => {
         const k = providerKey(row.sourceKey ?? row.sourceType ?? row.source);
         if (k && keys.indexOf(k) < 0) keys.push(k);
       });
-      if (keys.length) m.sources = keys;
+      m.sources = keys;
     }
     if (typeof lm.calculationVersion === "string") m.calculationVersion = lm.calculationVersion;
   });
