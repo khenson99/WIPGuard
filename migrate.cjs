@@ -284,16 +284,82 @@ function computePendingMigrations(localDirs, appliedNames) {
 }
 
 /**
- * True if SQL uses CONCURRENTLY in an actual statement (not just a comment).
- * Comments are stripped first so a migration that merely *mentions*
- * CONCURRENTLY in a `--` or block comment is NOT misclassified — that false
- * positive previously blocked an entirely transaction-safe migration.
+ * Replace every comment (`--` and block) and the *contents* of every quoted
+ * region (single-quoted strings, double-quoted identifiers, dollar-quoted
+ * bodies) with a single space, leaving all other SQL intact. One pass, quote-
+ * and comment-state aware so a `--`/`/*` sequence inside a string is NOT
+ * treated as a comment and a closing quote inside a comment is NOT treated as
+ * a string. Used to scan for bare keywords without matching them in prose/data.
+ */
+function stripCommentsAndQuotedText(sql) {
+  let out = "";
+  let index = 0;
+
+  while (index < sql.length) {
+    const current = sql[index];
+    const next = sql[index + 1];
+
+    if (current === "$") {
+      const match = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if (match) {
+        const tag = match[0];
+        const end = sql.indexOf(tag, index + tag.length);
+        out += " ";
+        index = end === -1 ? sql.length : end + tag.length;
+        continue;
+      }
+    }
+
+    if (current === "-" && next === "-") {
+      const newline = sql.indexOf("\n", index);
+      out += " ";
+      index = newline === -1 ? sql.length : newline; // keep the newline itself
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      const end = sql.indexOf("*/", index + 2);
+      out += " ";
+      index = end === -1 ? sql.length : end + 2;
+      continue;
+    }
+
+    if (current === "'" || current === '"') {
+      const quote = current;
+      index++;
+      while (index < sql.length) {
+        if (sql[index] === quote && sql[index + 1] === quote) {
+          index += 2; // doubled quote is an escaped quote, stay in the literal
+          continue;
+        }
+        if (sql[index] === quote) {
+          index++;
+          break;
+        }
+        index++;
+      }
+      out += " ";
+      continue;
+    }
+
+    out += current;
+    index++;
+  }
+
+  return out;
+}
+
+/**
+ * True if SQL uses CONCURRENTLY in an actual statement — never when it only
+ * appears in a comment, a string literal, a quoted identifier, or a
+ * dollar-quoted body. CONCURRENTLY is a bare keyword (CREATE/DROP INDEX ...
+ * CONCURRENTLY, REINDEX ... CONCURRENTLY), so neutralizing comments and quoted
+ * text before the test avoids both the comment false-positive that once blocked
+ * a transaction-safe migration AND the inverse risk of false-deferring a safe
+ * migration that merely names CONCURRENTLY in data.
  */
 function sqlUsesConcurrently(sql) {
-  const withoutComments = sql
-    .replace(/\/\*[\s\S]*?\*\//g, " ") // block comments
-    .replace(/--[^\n]*/g, " "); // line comments
-  return /\bCONCURRENTLY\b/i.test(withoutComments);
+  return /\bCONCURRENTLY\b/i.test(stripCommentsAndQuotedText(sql));
 }
 
 /**
@@ -514,4 +580,5 @@ module.exports = {
   sqlUsesConcurrently,
   splitMigrationSql,
   splitSqlStatements,
+  stripCommentsAndQuotedText,
 };
