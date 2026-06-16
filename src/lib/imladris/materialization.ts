@@ -6908,15 +6908,22 @@ export async function materializeImladrisCustomerSuccessMetrics(
 export async function materializeImladrisCanonicalMetrics(
   input: MaterializeDevelopmentMetricsInput,
 ): Promise<MaterializedImladrisMetricResult[]> {
-  const [development, productActivation, finance, sales, marketing, customerSuccess] =
-    await Promise.all([
-      materializeImladrisDevelopmentMetrics(input),
-      materializeImladrisProductActivationMetric(input),
-      materializeImladrisFinanceMetrics(input),
-      materializeImladrisSalesMetrics(input),
-      materializeImladrisMarketingMetrics(input),
-      materializeImladrisCustomerSuccessMetrics(input),
-    ]);
+  // Run the six metric calculators SEQUENTIALLY, not via Promise.all.
+  //
+  // Each calculator loads a 30-day window of ImladrisRawSourceRecord rows with
+  // their full JSON payloads. Running all six concurrently kept ~6 payload sets
+  // resident in the heap at once; combined with concurrent per-user
+  // materialization and overlapping cron cycles this drove the process to OOM.
+  // Sequencing means only one window is live at a time — the previous set
+  // becomes garbage-collectable before the next loads. Slower, but bounded; the
+  // advisory lock (src/lib/sync/sync-lock.ts) absorbs the extra wall-clock by
+  // skipping overlapping cycles.
+  const development = await materializeImladrisDevelopmentMetrics(input);
+  const productActivation = await materializeImladrisProductActivationMetric(input);
+  const finance = await materializeImladrisFinanceMetrics(input);
+  const sales = await materializeImladrisSalesMetrics(input);
+  const marketing = await materializeImladrisMarketingMetrics(input);
+  const customerSuccess = await materializeImladrisCustomerSuccessMetrics(input);
 
   return [
     development,

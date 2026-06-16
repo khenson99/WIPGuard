@@ -137,6 +137,26 @@ function getPrismaClient(): PrismaClientType {
   return client;
 }
 
+/**
+ * Return the underlying pg connection pool, initializing the Prisma client
+ * (and therefore the pool) on first use.
+ *
+ * Needed by code that must pin a SINGLE physical connection for the duration
+ * of an operation — e.g. session-scoped Postgres advisory locks, where the
+ * `pg_try_advisory_lock` and matching `pg_advisory_unlock` must run on the
+ * same backend connection. Going through Prisma's `$queryRaw` cannot
+ * guarantee that, because the adapter may route the two calls to different
+ * pooled connections.
+ */
+export function getConnectionPool(): Pool {
+  getPrismaClient();
+  const pool = globalForPrisma.pgPool;
+  if (!pool) {
+    throw new Error("pg connection pool is not initialized");
+  }
+  return pool;
+}
+
 export const prisma = new Proxy({} as PrismaClientType, {
   get(_target, prop) {
     const client = getPrismaClient();

@@ -142,6 +142,17 @@ export function recordSend(
   entry.lastSentAt = now;
 
   throttleState.set(channelId, entry);
+
+  // Evict channels with no activity inside the window. Without this the map
+  // grows unbounded as unique channel IDs accumulate over the process
+  // lifetime (a slow leak on the sync hot path). An evicted channel re-enters
+  // the map cleanly on its next send, and a channel with no recent send
+  // contributes nothing to throttling decisions, so eviction is behavior-safe.
+  for (const [key, value] of throttleState) {
+    if (value.lastSentAt <= windowStart) {
+      throttleState.delete(key);
+    }
+  }
 }
 
 /**
@@ -149,6 +160,14 @@ export function recordSend(
  */
 export function resetThrottleState(): void {
   throttleState.clear();
+}
+
+/**
+ * Number of channels currently tracked for throttling. Exposed for tests and
+ * ops visibility into the (now bounded) throttle map.
+ */
+export function throttleStateSize(): number {
+  return throttleState.size;
 }
 
 /**
