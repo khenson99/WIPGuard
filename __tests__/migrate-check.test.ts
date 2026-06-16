@@ -13,6 +13,8 @@ const migrate = require("../migrate.cjs") as {
     appliedNames: string[]
   ) => string[];
   listMigrationDirs: () => string[];
+  migrationContainsConcurrently: (dir: string) => boolean;
+  sqlUsesConcurrently: (sql: string) => boolean;
 };
 
 const MIGRATIONS_DIR = join(__dirname, "..", "prisma", "migrations");
@@ -57,5 +59,54 @@ describe("migrate.cjs --check helpers", () => {
     expect(migrate.computePendingMigrations(["20260101_a"], [])).toEqual([
       "20260101_a",
     ]);
+  });
+});
+
+describe("migrate.cjs CONCURRENTLY detection (deferred migrations)", () => {
+  it("detects CONCURRENTLY in real statements", () => {
+    expect(
+      migrate.sqlUsesConcurrently(
+        'CREATE INDEX CONCURRENTLY IF NOT EXISTS "x_idx" ON "X"("createdAt");'
+      )
+    ).toBe(true);
+    expect(migrate.sqlUsesConcurrently("create index concurrently on t(c);")).toBe(
+      true
+    );
+  });
+
+  it("does NOT flag CONCURRENTLY that appears only in a comment", () => {
+    // This is the false positive that previously blocked a transaction-safe
+    // migration: the runner refused it because a comment mentioned the word.
+    const lineComment = [
+      "-- an operator MAY pre-create with CREATE INDEX CONCURRENTLY IF NOT EXISTS",
+      'CREATE INDEX IF NOT EXISTS "x_idx" ON "X"("createdAt");',
+    ].join("\n");
+    expect(migrate.sqlUsesConcurrently(lineComment)).toBe(false);
+
+    const blockComment = [
+      "/* could be built CONCURRENTLY out of band */",
+      'CREATE INDEX IF NOT EXISTS "y_idx" ON "Y"("startedAt");',
+    ].join("\n");
+    expect(migrate.sqlUsesConcurrently(blockComment)).toBe(false);
+  });
+
+  it("plain migrations without CONCURRENTLY are not deferred", () => {
+    expect(
+      migrate.sqlUsesConcurrently('CREATE TABLE "T" ("id" TEXT PRIMARY KEY);')
+    ).toBe(false);
+  });
+
+  it("flags the retention prune-index migration as CONCURRENTLY (deferred)", () => {
+    // The real migration on disk uses CREATE INDEX CONCURRENTLY, so the runner
+    // must defer it (skip at boot, apply out-of-band).
+    expect(
+      migrate.migrationContainsConcurrently(
+        "20260615120000_add_retention_prune_indexes"
+      )
+    ).toBe(true);
+  });
+
+  it("returns false for a non-existent migration dir", () => {
+    expect(migrate.migrationContainsConcurrently("does_not_exist")).toBe(false);
   });
 });
