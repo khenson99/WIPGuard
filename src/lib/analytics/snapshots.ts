@@ -91,6 +91,11 @@ export async function storeAnalyticsSnapshot(input: SnapshotUpsertInput): Promis
       capturedAt: new Date(),
       expiresAt: input.expiresAt,
     },
+    // The caller ignores the return value. Without an explicit select Prisma
+    // round-trips the just-written `payload` (often tens of MB) back into a JS
+    // object on every write — a large transient allocation per provider per
+    // cycle. Returning only `id` avoids deserializing the payload at all.
+    select: { id: true },
   });
 }
 
@@ -129,6 +134,9 @@ export async function storeAnalyticsSnapshotFailure(input: SnapshotFailureInput)
       capturedAt: new Date(),
       expiresAt: input.expiresAt,
     },
+    // Return only `id`; the caller ignores the row and there is no payload to
+    // round-trip here, but this keeps both upserts consistent and cheap.
+    select: { id: true },
   });
 }
 
