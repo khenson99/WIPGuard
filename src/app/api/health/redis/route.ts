@@ -1,34 +1,21 @@
 import { NextResponse } from "next/server";
-import { isRedisConnected, redisHealthCheck } from "@/lib/redis-client";
+import { redisHealthCheck } from "@/lib/redis";
 
 /**
  * GET /api/health/redis
  *
- * Health check endpoint for Redis connectivity.
- * Returns the connection status and latency.
+ * Health check endpoint for Redis connectivity. Pings the live cache client and
+ * returns its connection status and latency.
  */
 export async function GET() {
-  const connected = isRedisConnected();
-
-  if (!connected) {
-    return NextResponse.json(
-      {
-        status: "disconnected",
-        message: "Redis is not connected or not configured",
-        latencyMs: null,
-      },
-      { status: 503 }
-    );
-  }
-
   const health = await redisHealthCheck();
 
   if (!health.connected) {
     return NextResponse.json(
       {
-        status: "unhealthy",
-        message: "Redis ping failed",
-        latencyMs: null,
+        status: "disconnected",
+        message: "Redis is not connected or not configured",
+        latencyMs: health.latencyMs,
       },
       { status: 503 }
     );
