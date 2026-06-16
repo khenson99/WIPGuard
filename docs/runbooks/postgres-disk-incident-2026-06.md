@@ -103,17 +103,21 @@ ALTER TABLE "ImladrisMetricLineage" SET (
 
 Disk **detection** is solid but **alert routing is not wired in code**:
 
-- `/api/health/db` and `/api/health` report `degraded`/503 over threshold (warn 75% / critical 90%,
-  WAL included when `walReadable`) but are **report-only** — nothing polls them to notify.
+- `/api/health/db` and `/api/health` report `degraded`/503 over threshold (warn 75% / critical 90%)
+  but are **report-only** — nothing polls them to notify.
 - Railway's healthcheck targets `/api/health/live`, which is **liveness-only** (always 200), so it
   does not consume the disk signal.
-- `src/app/api/health/db/route.ts` names the **Railway volume-usage metric alert** as the PRIMARY
-  alarm — a Railway *dashboard* setting (the CLI has no `alert` command), so it can't be verified
-  from the repo.
+- **The SQL endpoint is blind to the failure mode.** It counts `pg_database_size()` (relations)
+  plus WAL when readable, but **not temp files** — and every fill in this incident was `pgsql_tmp`
+  sort-spill. A cron polling `/api/health/db` would report `ok` while `pgsql_tmp` fills the disk, so
+  it is **not** a sufficient backstop. Don't build one and assume you're covered.
 
-**Do this:** configure a Railway alert on the `postgres-volume` usage metric (≈70%) routed to a
-channel you watch. Optionally add a code-side backstop: a cron that polls `/api/health/db` and posts
-to Slack on 503. Without one of these, the volume can climb silently (as it did to 95% here).
+**Do this — the only alarm that sees the real failure mode is the filesystem-level Railway volume
+metric:** in the Railway dashboard → `postgres-volume` (50 GB) → Metrics/Alerts, add a usage alert
+at ~70% routed to a channel you watch (Slack/email). Railway's CLI has no `alert` command, so this
+is dashboard-only and can't be set or verified from the repo. The in-app `/api/health/db` endpoint
+stays useful as a *secondary, structural* signal (which table/relation is growing), not as the disk
+alarm. Without the volume alert, the disk can climb silently (as it did to 95% here).
 
 ## Guardrails
 
