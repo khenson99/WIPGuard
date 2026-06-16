@@ -13,7 +13,13 @@ const migrate = require("../migrate.cjs") as {
     appliedNames: string[]
   ) => string[];
   listMigrationDirs: () => string[];
+  stripSqlComments: (sql: string) => string;
 };
+
+// Mirrors the guard in migrate.cjs's run(): a migration is refused only when
+// CONCURRENTLY appears in executable SQL (after comments are stripped).
+const containsConcurrently = (sql: string) =>
+  /\bCONCURRENTLY\b/i.test(migrate.stripSqlComments(sql));
 
 const MIGRATIONS_DIR = join(__dirname, "..", "prisma", "migrations");
 
@@ -57,5 +63,53 @@ describe("migrate.cjs --check helpers", () => {
     expect(migrate.computePendingMigrations(["20260101_a"], [])).toEqual([
       "20260101_a",
     ]);
+  });
+});
+
+describe("migrate.cjs CONCURRENTLY detection (comment-aware)", () => {
+  // Regression: a migration that only *mentioned* CONCURRENTLY in a comment
+  // was wrongly refused, failing every production deploy at boot.
+  it("ignores CONCURRENTLY inside a line comment", () => {
+    expect(
+      containsConcurrently(
+        '-- you may CREATE INDEX CONCURRENTLY by hand\nCREATE INDEX "x" ON "t"("c");'
+      )
+    ).toBe(false);
+  });
+
+  it("ignores CONCURRENTLY inside a block comment", () => {
+    expect(
+      containsConcurrently(
+        '/* operators MAY pre-create CONCURRENTLY */\nCREATE INDEX "x" ON "t"("c");'
+      )
+    ).toBe(false);
+  });
+
+  it("still refuses a real CREATE INDEX CONCURRENTLY statement", () => {
+    expect(
+      containsConcurrently('CREATE INDEX CONCURRENTLY "x" ON "t"("c");')
+    ).toBe(true);
+  });
+
+  it("does not flag the retention prune-indexes migration (comment-only mention)", () => {
+    const sql = require("fs").readFileSync(
+      join(
+        MIGRATIONS_DIR,
+        "20260615120000_add_retention_prune_indexes",
+        "migration.sql"
+      ),
+      "utf-8"
+    );
+    expect(sql).toMatch(/CONCURRENTLY/i); // present in the comment
+    expect(containsConcurrently(sql)).toBe(false); // but not in executable SQL
+  });
+
+  it("preserves executable DDL while stripping comments", () => {
+    const stripped = migrate.stripSqlComments(
+      '-- header\nCREATE INDEX "i" ON "t"("c"); /* trailing */'
+    );
+    expect(stripped).toContain('CREATE INDEX "i" ON "t"("c");');
+    expect(stripped).not.toContain("header");
+    expect(stripped).not.toContain("trailing");
   });
 });
