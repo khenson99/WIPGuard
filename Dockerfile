@@ -24,6 +24,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+# Enable manual GC (global.gc()) and pin the V8 old-space ceiling.
+# The cron sync (src/app/api/cron/sync/route.ts) calls gc() between phases and
+# after each cycle to release query/adapter buffers; WITHOUT --expose-gc those
+# calls are silent no-ops and the per-cycle memory strategy does nothing.
+# Size --max-old-space-size to ~75-80% of the container's memory limit; 4096
+# matches the ~4 GB ceiling the sync was tuned against (confirm container RAM).
+ENV NODE_OPTIONS="--expose-gc --max-old-space-size=4096"
 
 # Force cache invalidation
 ARG BUILDTIME=2026-02-13T2130

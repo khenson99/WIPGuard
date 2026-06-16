@@ -87,33 +87,63 @@ export const prisma = new Proxy({} as PrismaClientType, {
 });
 
 /**
- * Disconnect the Prisma client and drain the pg pool, then clear the
- * cached singleton so the next query creates a fresh client.
- *
- * Call this between heavy batch operations (e.g. cron sync cycles) to
- * release accumulated Prisma/pg adapter state that accumulates across
- * hundreds of queries (prepared statements, result buffers, etc.).
+ * Grace period before a rotated-out pool/client is drained, so web/auth
+ * requests that resolved the previous client moments before a reset can
+ * finish on it instead of erroring on a closed pool.
  */
-export async function resetPrismaClient(): Promise<void> {
+const RESET_DRAIN_GRACE_MS = 10_000;
+
+/**
+ * Rotate the Prisma client: swap in a fresh client+pool for all new work,
+ * then drain the previous client/pool after a short grace period.
+ *
+ * Call this between heavy batch operations (e.g. cron sync cycles) to release
+ * accumulated Prisma/pg adapter state (prepared statements, result buffers,
+ * query plan caches) that V8 GC alone cannot reclaim.
+ *
+ * Safety: the cron route shares this singleton with web/auth traffic in the
+ * SAME process. We must NOT hard-close the old pool synchronously — that would
+ * abort in-flight queries from concurrent requests that resolved the old client
+ * just before the reset. Instead we (1) clear the singleton so every new query
+ * lazily builds a fresh client+pool, (2) detach pool monitoring so the new pool
+ * re-attaches (attach() no-ops while already attached), and (3) drain the old
+ * pool on an unref'd timer after a grace window — pool.end() itself also waits
+ * for checked-out clients to be released.
+ */
+export function resetPrismaClient(): Promise<void> {
   const client = globalForPrisma.prisma;
   const pool = globalForPrisma.pgPool;
   globalForPrisma.prisma = undefined;
   globalForPrisma.pgPool = undefined;
 
-  if (client) {
-    try {
-      await (client as unknown as { $disconnect?: () => Promise<void> }).$disconnect?.();
-    } catch (e) {
-      console.warn("[Prisma] $disconnect error during reset:", e);
-    }
-  }
-  if (pool) {
-    try {
-      await pool.end();
-    } catch (e) {
-      console.warn("[Prisma] pool.end error during reset:", e);
-    }
-  }
+  // Re-bind monitoring to the next pool; otherwise the attach() guard leaves
+  // /api/health connectionPool metrics stuck on the old, drained pool.
+  poolMonitor.detach();
+
+  if (!client && !pool) return Promise.resolve();
+
+  const timer = setTimeout(() => {
+    void (async () => {
+      if (client) {
+        try {
+          await (client as unknown as { $disconnect?: () => Promise<void> }).$disconnect?.();
+        } catch (e) {
+          console.warn("[Prisma] $disconnect error during reset:", e);
+        }
+      }
+      if (pool) {
+        try {
+          await pool.end();
+        } catch (e) {
+          console.warn("[Prisma] pool.end error during reset:", e);
+        }
+      }
+    })();
+  }, RESET_DRAIN_GRACE_MS);
+  // Don't keep the event loop alive solely for the deferred drain.
+  (timer as unknown as { unref?: () => void }).unref?.();
+
+  return Promise.resolve();
 }
 
 export default prisma;
