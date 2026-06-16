@@ -5,6 +5,7 @@ import { pruneOutboxEvents } from "@/lib/events/outbox-retention";
 import { pruneImladrisMetricLineage } from "@/lib/imladris/lineage-retention";
 import { pruneImladrisMetricValues } from "@/lib/imladris/metric-value-retention";
 import { materializeImladrisCanonicalMetrics } from "@/lib/imladris/materialization";
+import { emitRetentionTelemetry } from "@/lib/sync/retention-telemetry";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
 
@@ -36,6 +37,13 @@ vi.mock("@/lib/sync/users", () => ({
   discoverConnectedUserIds: vi.fn(),
 }));
 
+// Retention telemetry is unit-tested directly in
+// ./retention-telemetry.test.ts; here it is mocked so these tests stay focused
+// on sync orchestration. The wiring (args + call ordering) is asserted below.
+vi.mock("@/lib/sync/retention-telemetry", () => ({
+  emitRetentionTelemetry: vi.fn(async () => undefined),
+}));
+
 function createPrismaMock() {
   return {
     user: {
@@ -47,6 +55,10 @@ function createPrismaMock() {
     integrationConnection: {
       findMany: vi.fn(async () => []),
     },
+    // Retention telemetry (src/lib/sync/retention-telemetry.ts) issues read-only
+    // catalog queries via $queryRaw. Default to empty rows so telemetry emits
+    // null stats without throwing; individual tests override as needed.
+    $queryRaw: vi.fn(async () => []),
   };
 }
 
@@ -91,6 +103,7 @@ describe("runAnalyticsSync", () => {
       },
     ] as never);
     vi.mocked(discoverConnectedUserIds).mockResolvedValue(["user_1", "user_2"]);
+    vi.mocked(emitRetentionTelemetry).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -416,6 +429,36 @@ describe("runAnalyticsSync", () => {
     expect(lastMaterializeOrder).toBeDefined();
     expect(lineageOrder).toBeGreaterThan(lastMaterializeOrder as number);
     expect(metricValueOrder).toBeGreaterThan(lineageOrder);
+
+    // Retention telemetry receives the prune outcomes and runs after pruning.
+    expect(emitRetentionTelemetry).toHaveBeenCalledWith(
+      {
+        prisma,
+        lineagePruning: lineageResult,
+        metricValuePruning: metricValueResult,
+        outboxPruning: outboxResult,
+      },
+      new Date("2026-06-01T12:00:00.000Z"),
+    );
+    const telemetryOrder = vi.mocked(emitRetentionTelemetry).mock.invocationCallOrder[0];
+    const outboxOrder = vi.mocked(pruneOutboxEvents).mock.invocationCallOrder[0];
+    expect(telemetryOrder).toBeGreaterThan(outboxOrder);
+  });
+
+  it("forwards prune errors to retention telemetry so they are still observed", async () => {
+    const prisma = createPrismaMock();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(pruneImladrisMetricLineage).mockRejectedValueOnce(new Error("boom"));
+
+    await runAnalyticsSync({ prisma: prisma as never });
+
+    expect(emitRetentionTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lineagePruning: { error: "boom" },
+      }),
+      new Date("2026-06-01T12:00:00.000Z"),
+    );
+    consoleError.mockRestore();
   });
 
   it("captures growth-control pruning failures without failing the sync", async () => {
