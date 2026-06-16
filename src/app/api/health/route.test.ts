@@ -23,9 +23,9 @@ describe("GET /api/health", () => {
     const { poolMonitor } = await import("@/lib/pool-monitor");
 
     vi.mocked(prisma.$queryRaw).mockResolvedValue(undefined as never);
-    // Storage check: ~2 GB database against the default 20 GB volume.
+    // Storage check: ~5 GB database against the default 50 GB volume.
     vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
-      { size: BigInt(2_000_000_000) },
+      { size: BigInt(5_000_000_000) },
     ] as never);
     vi.mocked(poolMonitor.getHealthStatus).mockReturnValue({
       status: "healthy",
@@ -67,8 +67,8 @@ describe("GET /api/health", () => {
         },
         storage: {
           status: "ok",
-          databaseSizeMb: 2000,
-          volumeCapacityMb: 20000,
+          databaseSizeMb: 5000,
+          volumeCapacityMb: 50000,
           usagePercent: 10,
         },
       },
@@ -79,9 +79,9 @@ describe("GET /api/health", () => {
   it("reports a storage warning without failing the health check", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { prisma } = await import("@/lib/prisma");
-    // 16 GB of 20 GB = 80% -> above the 75% warn threshold.
+    // 40 GB of 50 GB = 80% -> above the 75% warn threshold.
     vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
-      { size: BigInt(16_000_000_000) },
+      { size: BigInt(40_000_000_000) },
     ] as never);
 
     try {
@@ -93,7 +93,7 @@ describe("GET /api/health", () => {
       expect(body.status).toBe("ok");
       expect(body.checks.storage).toMatchObject({
         status: "warning",
-        databaseSizeMb: 16000,
+        databaseSizeMb: 40000,
         usagePercent: 80,
       });
       expect(consoleError).toHaveBeenCalledWith(
@@ -108,9 +108,9 @@ describe("GET /api/health", () => {
   it("returns 503 degraded when disk usage crosses the critical threshold", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { prisma } = await import("@/lib/prisma");
-    // 18.6 GB of 20 GB = 93% -> the June 2026 incident level.
+    // 46.5 GB of 50 GB = 93% -> the June 2026 incident level.
     vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
-      { size: BigInt(18_598_000_000) },
+      { size: BigInt(46_500_000_000) },
     ] as never);
 
     try {
