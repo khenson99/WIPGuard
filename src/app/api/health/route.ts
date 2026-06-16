@@ -5,8 +5,12 @@ import { poolMonitor } from "@/lib/pool-monitor";
 
 const APP_VERSION = process.env.APP_VERSION?.trim() || packageJson.version;
 
-/** Railway Postgres volume capacity. Override via DATABASE_VOLUME_CAPACITY_MB. */
-const DEFAULT_VOLUME_CAPACITY_MB = 20_000;
+/**
+ * Railway Postgres volume capacity in MB. The prod `postgres-volume` was grown
+ * to 50 GB (June 2026), so the default reflects the real volume. Override
+ * per-environment via DATABASE_VOLUME_CAPACITY_MB.
+ */
+const DEFAULT_VOLUME_CAPACITY_MB = 50_000;
 const DEFAULT_DISK_WARN_PERCENT = 75;
 const DEFAULT_DISK_CRITICAL_PERCENT = 90;
 
