@@ -19,6 +19,9 @@ function createPrismaMock() {
         update: vi.fn(async ({ data }) => ({ ...syncRun, ...data })),
       },
       imladrisRawSourceRecord: {
+        findMany: vi.fn(
+          async () => [] as Array<{ objectType: string; externalId: string; payloadHash: string }>,
+        ),
         upsert: vi.fn(async ({ create }) => create),
       },
     },
@@ -2878,5 +2881,59 @@ describe("Imladris raw ingestion", () => {
         organizationId: null,
       }),
     });
+  });
+
+  it("skips the upsert when the stored payload hash is unchanged", async () => {
+    // First ingest captures the payloadHash the pipeline computes for this record.
+    const first = createPrismaMock();
+    await ingestImladrisRawRecords({
+      prisma: first.prisma as never,
+      provider: IntegrationProvider.LINEAR,
+      context: { userId: "user_1", organizationId: "org_1" },
+      records: [{ objectType: "issue", externalId: "LIN-42", payload: { id: "LIN-42", state: "Done" } }],
+    });
+    const writtenHash = first.prisma.imladrisRawSourceRecord.upsert.mock.calls[0][0].create
+      .payloadHash as string;
+    expect(writtenHash).toBeTruthy();
+
+    // Second ingest of the identical payload: findMany reports the same hash, so
+    // the write must be skipped while the record still counts as accepted.
+    const second = createPrismaMock();
+    second.prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      { objectType: "issue", externalId: "LIN-42", payloadHash: writtenHash },
+    ]);
+
+    const result = await ingestImladrisRawRecords({
+      prisma: second.prisma as never,
+      provider: IntegrationProvider.LINEAR,
+      context: { userId: "user_1", organizationId: "org_1" },
+      records: [{ objectType: "issue", externalId: "LIN-42", payload: { id: "LIN-42", state: "Done" } }],
+    });
+
+    expect(second.prisma.imladrisRawSourceRecord.upsert).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      acceptedCount: 1,
+      errorCount: 0,
+      unchangedCount: 1,
+    });
+  });
+
+  it("still upserts when the stored payload hash differs", async () => {
+    const { prisma } = createPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      { objectType: "issue", externalId: "LIN-42", payloadHash: "stale-hash" },
+    ]);
+
+    const result = await ingestImladrisRawRecords({
+      prisma: prisma as never,
+      provider: IntegrationProvider.LINEAR,
+      context: { userId: "user_1", organizationId: "org_1" },
+      records: [{ objectType: "issue", externalId: "LIN-42", payload: { id: "LIN-42", state: "Started" } }],
+    });
+
+    expect(prisma.imladrisRawSourceRecord.upsert).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ status: "SUCCESS", acceptedCount: 1, errorCount: 0 });
+    expect(result).not.toHaveProperty("unchangedCount");
   });
 });
