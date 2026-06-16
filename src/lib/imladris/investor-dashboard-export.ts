@@ -32,6 +32,14 @@ const INVESTOR_METRIC_KEYS = (getImladrisDashboardDefinition("company")?.metricK
 ]).filter((key) => getImladrisDerivedMetricDefinition(key) === null);
 const EXPORT_SOURCE = "imladris-investor-dashboard-export";
 const EXPORT_SCHEMA_VERSION = 1;
+/**
+ * Cap on lineage (evidence) rows loaded per canonical metric value. This
+ * export emits full per-row evidence, so without a bound a single bloated
+ * metric value can OOM-crash the process (the June 2026 incident had values
+ * carrying ~300K lineage rows). A few hundred rows exceeds any real evidence
+ * need. See docs/runbooks/postgres-disk-incident-2026-06.md.
+ */
+const MAX_LINEAGE_EVIDENCE_ROWS = 500;
 const RAW_PROVIDERS = [
   "STRIPE",
   "HUBSPOT",
@@ -3822,6 +3830,7 @@ export async function buildInvestorDashboardExport(input: {
       include: {
         lineage: {
           orderBy: [{ createdAt: "asc" }],
+          take: MAX_LINEAGE_EVIDENCE_ROWS,
         },
       },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
