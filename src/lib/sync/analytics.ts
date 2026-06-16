@@ -25,6 +25,18 @@ import type { PrismaClientType } from '@/lib/prisma';
 import { runAnalyticsRefresh } from '@/lib/analytics/refresh-runner';
 import { pruneAnalyticsSnapshots } from '@/lib/analytics/snapshots';
 import {
+  pruneOutboxEvents,
+  type PruneOutboxEventsResult,
+} from '@/lib/events/outbox-retention';
+import {
+  pruneImladrisMetricLineage,
+  type PruneImladrisMetricLineageResult,
+} from '@/lib/imladris/lineage-retention';
+import {
+  pruneImladrisMetricValues,
+  type PruneImladrisMetricValuesResult,
+} from '@/lib/imladris/metric-value-retention';
+import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
@@ -46,10 +58,29 @@ export interface AnalyticsSyncInput {
   now?: Date;
 }
 
+/**
+ * Outcome of a growth-control pruning pass. A failed pass is captured as
+ * `{ error }` instead of throwing so retention hiccups cannot abort the
+ * analytics sync — but callers (orchestrator + cron route) surface the error
+ * as a partial failure so a silently regrowing table stays visible.
+ */
+export type GrowthPruneOutcome<T> = T | { error: string };
+
 export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
+  // #595: lightweight summary (full metric values stripped) so the cron
+  // after() closure no longer retains hundreds of MB across cycles.
   imladris: ImladrisMaterializationSyncSummary[];
+  /**
+   * Growth controls for the two unbounded tables behind the 2026-06-10
+   * disk-full outage. Named *Pruning (not *Retention) because the cron sync
+   * response already has a `retention` field for the customer-retention
+   * domain.
+   */
+  lineagePruning: GrowthPruneOutcome<PruneImladrisMetricLineageResult>;
+  metricValuePruning: GrowthPruneOutcome<PruneImladrisMetricValuesResult>;
+  outboxPruning: GrowthPruneOutcome<PruneOutboxEventsResult>;
 }
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
@@ -254,9 +285,44 @@ export async function runAnalyticsSync(
     warning: materializationWarning,
   });
 
-  // Strip full metric values from the result — they're already
-  // persisted to the DB. Keeping them in the response body retains
-  // hundreds of MB across cron cycles (held by the after() closure).
+  // Growth-control retention for the unbounded tables behind the 2026-06-10
+  // outage (lineage detail of superseded metric values; thinned canonical
+  // metric values; terminal outbox events). Runs after materialization so
+  // pruning never contends with this cycle's lineage writes. Sequential
+  // (not Promise.all) and each returns only small count objects, consistent
+  // with #595's peak-memory bounding. All passes are time-budgeted and
+  // resume next cycle, so the initial multi-million-row backlog drains
+  // incrementally.
+  const lineagePruning = await pruneImladrisMetricLineage({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneImladrisMetricLineageResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.lineage_pruning_failed', { error: message });
+    return { error: message };
+  });
+  // Runs after lineage pruning by design: it only deletes lineage-free rows,
+  // so the lineage pass clears the way and this pass can never cascade.
+  const metricValuePruning = await pruneImladrisMetricValues({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneImladrisMetricValuesResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.metric_value_pruning_failed', { error: message });
+    return { error: message };
+  });
+  const outboxPruning = await pruneOutboxEvents({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneOutboxEventsResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.outbox_pruning_failed', { error: message });
+    return { error: message };
+  });
+
+  // #595: strip full metric values from the result — they're already
+  // persisted to the DB. Keeping them in the response body retains hundreds
+  // of MB across cron cycles (held by the after() closure).
   const imladrisSummary = imladris.map((entry) => ({
     userId: entry.userId,
     organizationId: entry.organizationId,
@@ -268,5 +334,12 @@ export async function runAnalyticsSync(
     ...(entry.error ? { error: entry.error } : {}),
   }));
 
-  return { refresh, pruning, imladris: imladrisSummary };
+  return {
+    refresh,
+    pruning,
+    imladris: imladrisSummary,
+    lineagePruning,
+    metricValuePruning,
+    outboxPruning,
+  };
 }

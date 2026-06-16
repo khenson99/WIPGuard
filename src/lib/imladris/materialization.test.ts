@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import {
+  capLineageRecordsPerSource,
   materializeImladrisCustomerSuccessMetrics,
   materializeImladrisDevelopmentMetrics,
   materializeImladrisFinanceMetrics,
@@ -24531,5 +24532,179 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       accountsWithBillingRisk: 1,
     });
+  });
+});
+
+describe("lineage growth controls", () => {
+  const AS_OF = new Date("2026-05-29T12:00:00.000Z");
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function lineageRecord(input: {
+    id: string;
+    provider: IntegrationProvider;
+    occurredAt: string | null;
+  }): RawSourceRecordFixture {
+    return {
+      id: input.id,
+      provider: input.provider,
+      objectType: "issue",
+      externalId: input.id,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,
+      sourceCreatedAt: null,
+      sourceUpdatedAt: null,
+      payload: {},
+    };
+  }
+
+  function cap(records: RawSourceRecordFixture[], maxPerSource: number) {
+    return capLineageRecordsPerSource(
+      records as unknown as Parameters<typeof capLineageRecordsPerSource>[0],
+      AS_OF,
+      maxPerSource,
+    ) as unknown as RawSourceRecordFixture[];
+  }
+
+  describe("capLineageRecordsPerSource", () => {
+    it("returns the original records when every source is within the cap", () => {
+      const records = [
+        lineageRecord({ id: "linear_a", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-10T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_b", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-11T00:00:00.000Z" }),
+        lineageRecord({ id: "github_a", provider: IntegrationProvider.GITHUB, occurredAt: "2026-05-12T00:00:00.000Z" }),
+      ];
+
+      // Per-source groups are all within the cap even though the total exceeds it.
+      expect(cap(records, 2)).toBe(records);
+      // Fast path: total under the cap.
+      expect(cap(records, 5)).toBe(records);
+    });
+
+    it("caps each overflowing source to its most recently captured records, preserving order", () => {
+      const records = [
+        lineageRecord({ id: "linear_old", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-01T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_new", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-20T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_mid", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-10T00:00:00.000Z" }),
+        lineageRecord({ id: "github_a", provider: IntegrationProvider.GITHUB, occurredAt: "2026-05-05T00:00:00.000Z" }),
+      ];
+
+      const result = cap(records, 2);
+
+      expect(result.map((record) => record.id)).toEqual([
+        "linear_new",
+        "linear_mid",
+        "github_a",
+      ]);
+    });
+
+    it("keeps every source represented under an aggressive cap — provenance coverage is never lost", () => {
+      const records = [
+        lineageRecord({ id: "linear_1", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-01T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_2", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-02T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_3", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-03T00:00:00.000Z" }),
+        lineageRecord({ id: "github_1", provider: IntegrationProvider.GITHUB, occurredAt: "2026-05-04T00:00:00.000Z" }),
+        lineageRecord({ id: "github_2", provider: IntegrationProvider.GITHUB, occurredAt: "2026-05-05T00:00:00.000Z" }),
+        lineageRecord({ id: "posthog_1", provider: IntegrationProvider.POSTHOG, occurredAt: "2026-05-06T00:00:00.000Z" }),
+      ];
+
+      const result = cap(records, 1);
+
+      expect(result.map((record) => record.id)).toEqual([
+        "linear_3",
+        "github_2",
+        "posthog_1",
+      ]);
+      expect(new Set(result.map((record) => record.provider)).size).toBe(3);
+    });
+
+    it("drops undated and future-dated records before dated ones and tie-breaks by id", () => {
+      const records = [
+        lineageRecord({ id: "linear_undated", provider: IntegrationProvider.LINEAR, occurredAt: null }),
+        lineageRecord({ id: "linear_future", provider: IntegrationProvider.LINEAR, occurredAt: "2026-07-01T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_tie_b", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-15T00:00:00.000Z" }),
+        lineageRecord({ id: "linear_tie_a", provider: IntegrationProvider.LINEAR, occurredAt: "2026-05-15T00:00:00.000Z" }),
+      ];
+
+      const result = cap(records, 2);
+
+      // Both tied records beat the undated and future-dated ones (future
+      // occurredAt is not observable as of AS_OF); original order preserved.
+      expect(result.map((record) => record.id)).toEqual(["linear_tie_b", "linear_tie_a"]);
+
+      // Deterministic id tie-break when only one slot remains.
+      expect(cap(records, 1).map((record) => record.id)).toEqual(["linear_tie_a"]);
+    });
+  });
+
+  it("applies IMLADRIS_LINEAGE_MAX_ROWS_PER_SOURCE when persisting lineage", async () => {
+    vi.stubEnv("IMLADRIS_LINEAGE_MAX_ROWS_PER_SOURCE", "1");
+    const prisma = createPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_linear_1",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-1",
+        occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+        payload: {
+          id: "LIN-1",
+          state: { type: "completed" },
+          createdAt: "2026-05-10T10:00:00.000Z",
+          completedAt: "2026-05-15T10:00:00.000Z",
+        },
+      },
+      {
+        id: "raw_linear_2",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-2",
+        occurredAt: new Date("2026-05-20T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-20T10:00:00.000Z"),
+        payload: {
+          id: "LIN-2",
+          state: { type: "completed" },
+          createdAt: "2026-05-16T10:00:00.000Z",
+          completedAt: "2026-05-20T10:00:00.000Z",
+        },
+      },
+      {
+        id: "raw_github_1",
+        provider: IntegrationProvider.GITHUB,
+        objectType: "pull_request",
+        externalId: "repo/pull/7",
+        occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+        payload: {
+          number: 7,
+          merged: true,
+          created_at: "2026-05-16T10:00:00.000Z",
+          merged_at: "2026-05-18T10:00:00.000Z",
+        },
+      },
+    ]);
+
+    await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledTimes(1);
+    const createManyArgs = prisma.imladrisMetricLineage.createMany.mock.calls[0][0] as {
+      data: Array<{ rawRecordId: string }>;
+    };
+    const rawRecordIds = createManyArgs.data.map((row) => row.rawRecordId);
+    // Linear is capped to its single most recent record; GitHub stays — the
+    // cap is per source, so no contributing source disappears from provenance.
+    expect(rawRecordIds).toContain("raw_linear_2");
+    expect(rawRecordIds).toContain("raw_github_1");
+    expect(rawRecordIds).not.toContain("raw_linear_1");
   });
 });

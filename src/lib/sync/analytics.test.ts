@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
+import { pruneOutboxEvents } from "@/lib/events/outbox-retention";
+import { pruneImladrisMetricLineage } from "@/lib/imladris/lineage-retention";
+import { pruneImladrisMetricValues } from "@/lib/imladris/metric-value-retention";
 import { materializeImladrisCanonicalMetrics } from "@/lib/imladris/materialization";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
@@ -11,6 +14,18 @@ vi.mock("@/lib/analytics/refresh-runner", () => ({
 
 vi.mock("@/lib/analytics/snapshots", () => ({
   pruneAnalyticsSnapshots: vi.fn(),
+}));
+
+vi.mock("@/lib/events/outbox-retention", () => ({
+  pruneOutboxEvents: vi.fn(),
+}));
+
+vi.mock("@/lib/imladris/lineage-retention", () => ({
+  pruneImladrisMetricLineage: vi.fn(),
+}));
+
+vi.mock("@/lib/imladris/metric-value-retention", () => ({
+  pruneImladrisMetricValues: vi.fn(),
 }));
 
 vi.mock("@/lib/imladris/materialization", () => ({
@@ -42,6 +57,30 @@ describe("runAnalyticsSync", () => {
     vi.clearAllMocks();
     vi.mocked(runAnalyticsRefresh).mockResolvedValue({ refreshed: true } as never);
     vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
+    vi.mocked(pruneImladrisMetricLineage).mockResolvedValue({
+      deletedRows: 0,
+      prunedMetricValues: 0,
+      batches: 0,
+      cutoff: "2026-05-18T12:00:00.000Z",
+      completed: true,
+      durationMs: 1,
+    } as never);
+    vi.mocked(pruneImladrisMetricValues).mockResolvedValue({
+      deletedRows: 0,
+      batches: 0,
+      cutoff: "2026-05-18T12:00:00.000Z",
+      completed: true,
+      durationMs: 1,
+    } as never);
+    vi.mocked(pruneOutboxEvents).mockResolvedValue({
+      deletedDispatched: 0,
+      deletedDeadLetter: 0,
+      batches: 0,
+      dispatchedCutoff: "2026-05-18T12:00:00.000Z",
+      deadLetterCutoff: "2026-05-02T12:00:00.000Z",
+      completed: true,
+      durationMs: 1,
+    } as never);
     vi.mocked(materializeImladrisCanonicalMetrics).mockResolvedValue([
       {
         metricKey: "development.delivery_health",
@@ -315,6 +354,102 @@ describe("runAnalyticsSync", () => {
         error: "canonical write failed",
       }),
     );
+    consoleError.mockRestore();
+  });
+
+  it("runs growth-control pruning after materialization and surfaces the results", async () => {
+    const prisma = createPrismaMock();
+    const lineageResult = {
+      deletedRows: 12,
+      prunedMetricValues: 3,
+      batches: 2,
+      cutoff: "2026-05-18T12:00:00.000Z",
+      completed: true,
+      durationMs: 5,
+    };
+    const metricValueResult = {
+      deletedRows: 30,
+      batches: 1,
+      cutoff: "2026-05-18T12:00:00.000Z",
+      completed: true,
+      durationMs: 2,
+    };
+    const outboxResult = {
+      deletedDispatched: 7,
+      deletedDeadLetter: 1,
+      batches: 2,
+      dispatchedCutoff: "2026-05-18T12:00:00.000Z",
+      deadLetterCutoff: "2026-05-02T12:00:00.000Z",
+      completed: false,
+      durationMs: 3,
+    };
+    vi.mocked(pruneImladrisMetricLineage).mockResolvedValueOnce(lineageResult as never);
+    vi.mocked(pruneImladrisMetricValues).mockResolvedValueOnce(metricValueResult as never);
+    vi.mocked(pruneOutboxEvents).mockResolvedValueOnce(outboxResult as never);
+
+    const result = await runAnalyticsSync({
+      prisma: prisma as never,
+    });
+
+    expect(result.lineagePruning).toEqual(lineageResult);
+    expect(result.metricValuePruning).toEqual(metricValueResult);
+    expect(result.outboxPruning).toEqual(outboxResult);
+    expect(pruneImladrisMetricLineage).toHaveBeenCalledWith({
+      prisma,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+    expect(pruneImladrisMetricValues).toHaveBeenCalledWith({
+      prisma,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+    expect(pruneOutboxEvents).toHaveBeenCalledWith({
+      prisma,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
+
+    // Pruning must run after materialization so it never contends with the
+    // cycle's own lineage writes, and metric value thinning must run after
+    // lineage pruning (it only deletes lineage-free rows).
+    const lastMaterializeOrder = vi
+      .mocked(materializeImladrisCanonicalMetrics)
+      .mock.invocationCallOrder.at(-1);
+    const lineageOrder = vi.mocked(pruneImladrisMetricLineage).mock.invocationCallOrder[0];
+    const metricValueOrder = vi.mocked(pruneImladrisMetricValues).mock.invocationCallOrder[0];
+    expect(lastMaterializeOrder).toBeDefined();
+    expect(lineageOrder).toBeGreaterThan(lastMaterializeOrder as number);
+    expect(metricValueOrder).toBeGreaterThan(lineageOrder);
+  });
+
+  it("captures growth-control pruning failures without failing the sync", async () => {
+    const prisma = createPrismaMock();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(pruneImladrisMetricLineage).mockRejectedValueOnce(
+      new Error("lineage prune exploded"),
+    );
+    vi.mocked(pruneImladrisMetricValues).mockRejectedValueOnce(
+      new Error("metric value prune exploded"),
+    );
+    vi.mocked(pruneOutboxEvents).mockRejectedValueOnce(new Error("outbox prune exploded"));
+
+    const result = await runAnalyticsSync({
+      prisma: prisma as never,
+    });
+
+    expect(result.lineagePruning).toEqual({ error: "lineage prune exploded" });
+    expect(result.metricValuePruning).toEqual({ error: "metric value prune exploded" });
+    expect(result.outboxPruning).toEqual({ error: "outbox prune exploded" });
+    // The sync itself still succeeds end-to-end.
+    expect(result.refresh).toEqual({ refreshed: true });
+    expect(result.imladris).toHaveLength(2);
+    expect(consoleError).toHaveBeenCalledWith("analytics_sync.lineage_pruning_failed", {
+      error: "lineage prune exploded",
+    });
+    expect(consoleError).toHaveBeenCalledWith("analytics_sync.metric_value_pruning_failed", {
+      error: "metric value prune exploded",
+    });
+    expect(consoleError).toHaveBeenCalledWith("analytics_sync.outbox_pruning_failed", {
+      error: "outbox prune exploded",
+    });
     consoleError.mockRestore();
   });
 });

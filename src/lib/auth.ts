@@ -206,15 +206,18 @@ function sanitizeLogMetadata(
   return sanitized;
 }
 
+// Hard-disabled in production builds, opt-in elsewhere: next-auth's debug
+// output dumps the full provider config — including the OAuth client
+// secret — plus state/PKCE cookies into server logs. A stray
+// NEXTAUTH_DEBUG=true on the production host must never re-enable it.
+const nextAuthDebugEnabled =
+  process.env.NODE_ENV !== "production" && process.env.NEXTAUTH_DEBUG === "true";
+
 export const authOptions: NextAuthOptions = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: createResilientAdapter() as any,
   providers,
-  // Hard-disabled in production builds, opt-in elsewhere: next-auth's debug
-  // output dumps the full provider config — including the OAuth client
-  // secret — plus state/PKCE cookies into server logs. A stray
-  // NEXTAUTH_DEBUG=true on the production host must never re-enable it.
-  debug: process.env.NODE_ENV !== "production" && process.env.NEXTAUTH_DEBUG === "true",
+  debug: nextAuthDebugEnabled,
   logger: {
     error(code, metadata) {
       console.error("[next-auth][error]", code, sanitizeLogMetadata(metadata));
@@ -223,6 +226,13 @@ export const authOptions: NextAuthOptions = {
       console.warn("[next-auth][warn]", code);
     },
     debug(code, metadata) {
+      // next-auth v4 invokes a custom logger.debug even when `debug` is
+      // false: setLogger() (next-auth/utils/logger) installs the debug-flag
+      // no-op first, then unconditionally overwrites it with this handler.
+      // The handler must gate itself, or debug events (GET_AUTHORIZATION_URL
+      // with provider config and cookie payloads) reach production logs
+      // regardless of the `debug` option above.
+      if (!nextAuthDebugEnabled) return;
       // Defense in depth: even with debug enabled, never print secret-bearing
       // metadata (provider config, cookie values) verbatim.
       console.log("[next-auth][debug]", code, sanitizeLogMetadata(metadata));

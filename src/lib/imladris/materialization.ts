@@ -1308,19 +1308,101 @@ function dedupeRawSourceRecords(
   );
 }
 
+const DEFAULT_LINEAGE_MAX_ROWS_PER_SOURCE = 1_000;
+
+function lineageMaxRowsPerSourceFromEnv(): number {
+  const raw = process.env.IMLADRIS_LINEAGE_MAX_ROWS_PER_SOURCE?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed >= 1) return Math.floor(parsed);
+  return DEFAULT_LINEAGE_MAX_ROWS_PER_SOURCE;
+}
+
+function lineageRecencyTimestamp(record: RawSourceRecordRow, asOf: Date): number {
+  return (
+    firstDateAtOrBefore(
+      asOf,
+      record.occurredAt,
+      record.sourceUpdatedAt,
+      record.sourceCreatedAt,
+    )?.getTime() ?? Number.NEGATIVE_INFINITY
+  );
+}
+
+/**
+ * Bound per-metric-value lineage detail WITHOUT losing source coverage.
+ *
+ * Growth control from the 2026-06-10 disk-full outage: lineage volume is one
+ * row per contributing raw record per metric value, so a single provider
+ * backfill (e.g. a PostHog event flood) can mint enormous lineage sets on
+ * every 10-minute materialization. The cap applies PER sourceKey rather than
+ * globally so every contributing source stays represented in provenance —
+ * the feature's purpose — keeping each source's most recently captured
+ * records (deterministic record-id tie-break). Original record ordering is
+ * preserved so persisted lineage display order is unchanged.
+ *
+ * Bulk aging-out of superseded metric values' lineage lives in
+ * src/lib/imladris/lineage-retention.ts; this cap only bounds pathological
+ * per-cycle volume.
+ */
+export function capLineageRecordsPerSource(
+  records: RawSourceRecordRow[],
+  asOf: Date,
+  maxPerSource: number,
+): RawSourceRecordRow[] {
+  if (!Number.isFinite(maxPerSource) || maxPerSource < 1 || records.length <= maxPerSource) {
+    return records;
+  }
+  const bySource = new Map<string, RawSourceRecordRow[]>();
+  for (const record of records) {
+    const key = sourceKeyForProvider(record.provider);
+    const group = bySource.get(key);
+    if (group) {
+      group.push(record);
+    } else {
+      bySource.set(key, [record]);
+    }
+  }
+  let truncated = false;
+  const keptIds = new Set<string>();
+  for (const group of bySource.values()) {
+    if (group.length <= maxPerSource) {
+      for (const record of group) keptIds.add(record.id);
+      continue;
+    }
+    truncated = true;
+    const ranked = [...group].sort(
+      (left, right) =>
+        lineageRecencyTimestamp(right, asOf) - lineageRecencyTimestamp(left, asOf) ||
+        left.id.localeCompare(right.id),
+    );
+    for (const record of ranked.slice(0, maxPerSource)) keptIds.add(record.id);
+  }
+  if (!truncated) return records;
+  return records.filter((record) => keptIds.has(record.id));
+}
+
 async function replaceLineage(input: {
   metricLineage: MetricLineageDelegate;
   metricValueId: string;
   records: RawSourceRecordRow[];
   calculationVersion: string;
   asOf: Date;
+  maxRowsPerSource?: number;
 }) {
+  // Growth control: bound per-source lineage detail before persisting (see
+  // capLineageRecordsPerSource). IMLADRIS_LINEAGE_MAX_ROWS_PER_SOURCE
+  // overrides the default cap of 1,000 rows per source per metric value.
+  const records = capLineageRecordsPerSource(
+    input.records,
+    input.asOf,
+    input.maxRowsPerSource ?? lineageMaxRowsPerSourceFromEnv(),
+  );
   await input.metricLineage.deleteMany({
     where: { metricValueId: input.metricValueId },
   });
-  if (input.records.length === 0) return;
+  if (records.length === 0) return;
   await input.metricLineage.createMany({
-    data: input.records.map((record) => ({
+    data: records.map((record) => ({
       metricValueId: input.metricValueId,
       rawRecordId: record.id,
       sourceKey: sourceKeyForProvider(record.provider),
