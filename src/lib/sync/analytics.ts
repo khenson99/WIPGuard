@@ -69,7 +69,11 @@ export type GrowthPruneOutcome<T> = T | { error: string };
 export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
-  imladris: ImladrisMaterializationSyncResult[];
+  // Lightweight summary (full metric values stripped) so the cron route's
+  // after() closure no longer retains hundreds of MB of metric values across
+  // cycles — they are already persisted to the DB. Salvaged from #595 after
+  // the broader OOM fix landed in #594.
+  imladris: ImladrisMaterializationSyncSummary[];
   /**
    * Growth controls for the two unbounded tables behind the 2026-06-10
    * disk-full outage. Named *Pruning (not *Retention) because the cron sync
@@ -100,6 +104,23 @@ interface ImladrisMaterializationSyncResult {
   periodStart: string;
   periodEnd: string;
   metrics: MaterializedImladrisMetricResult[];
+  error?: string;
+  warning?: string;
+}
+
+/**
+ * What callers actually need from materialization: identity, period, and which
+ * metrics were produced. The full metric values are deliberately omitted —
+ * they are already persisted, and retaining them in the cron route's after()
+ * closure leaked hundreds of MB across sync cycles.
+ */
+interface ImladrisMaterializationSyncSummary {
+  userId: string;
+  organizationId: string | null;
+  periodStart: string;
+  periodEnd: string;
+  metricsCount: number;
+  metricKeys: string[];
   error?: string;
   warning?: string;
 }
@@ -305,5 +326,26 @@ export async function runAnalyticsSync(
     return { error: message };
   });
 
-  return { refresh, pruning, imladris, lineagePruning, metricValuePruning, outboxPruning };
+  // Strip full metric values from the result — they're already persisted to
+  // the DB. Keeping them in the response body retains hundreds of MB across
+  // cron cycles (held by the route's after() closure). Salvaged from #595.
+  const imladrisSummary: ImladrisMaterializationSyncSummary[] = imladris.map((entry) => ({
+    userId: entry.userId,
+    organizationId: entry.organizationId,
+    periodStart: entry.periodStart,
+    periodEnd: entry.periodEnd,
+    metricsCount: entry.metrics.length,
+    metricKeys: entry.metrics.map((metric) => metric.metricKey),
+    ...(entry.warning ? { warning: entry.warning } : {}),
+    ...(entry.error ? { error: entry.error } : {}),
+  }));
+
+  return {
+    refresh,
+    pruning,
+    imladris: imladrisSummary,
+    lineagePruning,
+    metricValuePruning,
+    outboxPruning,
+  };
 }

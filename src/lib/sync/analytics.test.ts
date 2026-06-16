@@ -143,24 +143,16 @@ describe("runAnalyticsSync", () => {
         organizationId: "org_1",
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [
-          expect.objectContaining({
-            metricKey: "development.delivery_health",
-            rawRecordCount: 3,
-          }),
-        ],
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
       },
       {
         userId: "user_2",
         organizationId: null,
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [
-          expect.objectContaining({
-            metricKey: "development.delivery_health",
-            rawRecordCount: 3,
-          }),
-        ],
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
       },
     ]);
   });
@@ -268,9 +260,8 @@ describe("runAnalyticsSync", () => {
       imladris: expect.arrayContaining([
         expect.objectContaining({
           userId: "user_1",
-          metrics: expect.arrayContaining([
-            expect.objectContaining({ metricKey: "development.delivery_health" }),
-          ]),
+          metricsCount: 1,
+          metricKeys: ["development.delivery_health"],
         }),
       ]),
     }));
@@ -298,11 +289,8 @@ describe("runAnalyticsSync", () => {
         organizationId: "org_1",
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [
-          expect.objectContaining({
-            metricKey: "development.delivery_health",
-          }),
-        ],
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
         warning:
           "Analytics refresh reported 2 provider failures; canonical materialization used available raw records.",
       },
@@ -311,11 +299,8 @@ describe("runAnalyticsSync", () => {
         organizationId: null,
         periodStart: "2026-05-02T12:00:00.000Z",
         periodEnd: "2026-06-01T12:00:00.000Z",
-        metrics: [
-          expect.objectContaining({
-            metricKey: "development.delivery_health",
-          }),
-        ],
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
         warning:
           "Analytics refresh reported 2 provider failures; canonical materialization used available raw records.",
       },
@@ -347,16 +332,14 @@ describe("runAnalyticsSync", () => {
     expect(result.imladris).toEqual([
       expect.objectContaining({
         userId: "user_1",
-        metrics: [
-          expect.objectContaining({
-            metricKey: "development.delivery_health",
-          }),
-        ],
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
       }),
       expect.objectContaining({
         userId: "user_2",
         organizationId: null,
-        metrics: [],
+        metricsCount: 0,
+        metricKeys: [],
         error: "canonical write failed",
       }),
     ]);
