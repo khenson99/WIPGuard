@@ -68,6 +68,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
   },
+  resetPrismaClient: vi.fn(),
 }));
 
 describe("POST /api/cron/sync", () => {

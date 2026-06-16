@@ -39,6 +39,16 @@ function parseRetentionDays(): number {
   return 30;
 }
 
+/**
+ * `?wait=1` (or `wait=true`) runs the sync synchronously and returns the full
+ * result body, instead of queueing it in the background and returning 202.
+ * Used by callers that need the outcome inline (tests, manual one-shot runs).
+ */
+function shouldWaitForCompletion(request: NextRequest): boolean {
+  const wait = new URL(request.url).searchParams.get("wait")?.trim().toLowerCase();
+  return wait === "1" || wait === "true";
+}
+
 
 
 async function runRetentionMaterialization(input: {
@@ -525,6 +535,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
+  // Synchronous mode for callers that need the result inline (?wait=1).
+  if (shouldWaitForCompletion(request)) {
+    const result = await executeCronSync({ startedAt, ownerUserId, userIds });
+    return NextResponse.json(result.body, { status: result.status });
+  }
+
   after(async () => {
     const result = await executeCronSync({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
@@ -533,9 +549,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         error: (result.body as Record<string, unknown>).error ?? "unknown",
       });
     } else if (isDegradedSyncBody(result.body)) {
-      console.error("POST /api/cron/sync background degraded:", {
-        failures: (result.body as Record<string, unknown>).failures ?? [],
-      });
+      console.error("POST /api/cron/sync background degraded:", result.body);
     }
 
     // Reset the Prisma client to release accumulated adapter state
