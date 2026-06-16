@@ -284,6 +284,38 @@ function computePendingMigrations(localDirs, appliedNames) {
 }
 
 /**
+ * True if SQL uses CONCURRENTLY in an actual statement (not just a comment).
+ * Comments are stripped first so a migration that merely *mentions*
+ * CONCURRENTLY in a `--` or block comment is NOT misclassified — that false
+ * positive previously blocked an entirely transaction-safe migration.
+ */
+function sqlUsesConcurrently(sql) {
+  const withoutComments = sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ") // block comments
+    .replace(/--[^\n]*/g, " "); // line comments
+  return /\bCONCURRENTLY\b/i.test(withoutComments);
+}
+
+/**
+ * True if a migration's SQL uses CONCURRENTLY (e.g. CREATE INDEX
+ * CONCURRENTLY). Such statements cannot run inside a transaction, and this
+ * runner wraps every migration in BEGIN/COMMIT — so it cannot apply them.
+ *
+ * These migrations are DEFERRED: skipped at preDeploy/boot (never recorded as
+ * applied here) so a deploy is never blocked, then applied OUT-OF-BAND and
+ * recorded in _prisma_migrations. See docs/runbooks/concurrent-index-migrations.md.
+ */
+function migrationContainsConcurrently(dir) {
+  try {
+    return sqlUsesConcurrently(
+      fs.readFileSync(path.join(MIGRATIONS_DIR, dir, "migration.sql"), "utf-8"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Read-only schema currency check (`node migrate.cjs --check`).
  *
  * Exit codes: 0 = every local migration is applied, 2 = migrations pending,
@@ -313,10 +345,23 @@ async function check() {
       const applied = await pool.query(
         'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL',
       );
-      const pending = computePendingMigrations(
+      const pendingAll = computePendingMigrations(
         localDirs,
         applied.rows.map((row) => row.migration_name),
       );
+      // Deferred CONCURRENTLY migrations are applied out-of-band, never at
+      // boot, so they must not keep this fast-path check returning "pending"
+      // forever (which would defeat the skip-when-current optimization). Report
+      // them, but don't gate boot on them.
+      const deferred = pendingAll.filter(migrationContainsConcurrently);
+      const pending = pendingAll.filter(
+        (dir) => !migrationContainsConcurrently(dir),
+      );
+      if (deferred.length > 0) {
+        console.log(
+          `Schema check: ${deferred.length} deferred CONCURRENTLY migration(s) (apply out-of-band): ${deferred.join(", ")}`,
+        );
+      }
       if (pending.length > 0) {
         console.log(
           `Schema check: ${pending.length} pending migration(s): ${pending.join(", ")}`,
@@ -380,11 +425,17 @@ async function run() {
 
       const sqlFile = path.join(MIGRATIONS_DIR, dir, "migration.sql");
       const sql = fs.readFileSync(sqlFile, "utf-8");
-      if (/\bCONCURRENTLY\b/i.test(sql)) {
-        console.error(
-          `Migration ${dir} contains CONCURRENTLY; refusing to run outside a transaction`,
+      if (sqlUsesConcurrently(sql)) {
+        // CONCURRENTLY can't run inside a transaction and this runner wraps
+        // every migration in BEGIN/COMMIT. DEFER rather than fail the deploy:
+        // skip here without recording it applied, so it stays pending until
+        // applied out-of-band (then recorded). Previously this exited 1 and
+        // blocked every deploy once such a migration landed.
+        // See docs/runbooks/concurrent-index-migrations.md.
+        console.warn(
+          `  defer: ${dir} uses CONCURRENTLY — must be applied out-of-band, skipping`,
         );
-        process.exit(1);
+        continue;
       }
       const checksum = crypto
         .createHash("sha256")
@@ -459,6 +510,8 @@ if (require.main === module) {
 module.exports = {
   computePendingMigrations,
   listMigrationDirs,
+  migrationContainsConcurrently,
+  sqlUsesConcurrently,
   splitMigrationSql,
   splitSqlStatements,
 };
