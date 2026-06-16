@@ -35,6 +35,13 @@ export interface IngestImladrisRawRecordsResult {
   recordCount: number;
   acceptedCount: number;
   errorCount: number;
+  /**
+   * Number of distinct records whose payload was byte-for-byte identical to the
+   * stored row (matched by `payloadHash`) and therefore skipped the write. These
+   * still count toward `acceptedCount` — they are reported separately only for
+   * observability into how much write churn the hash-skip avoids.
+   */
+  unchangedCount?: number;
   statusPersistenceErrors?: string[];
 }
 
@@ -44,6 +51,15 @@ type SourceSyncRunDelegate = {
 };
 
 type RawSourceRecordDelegate = {
+  findMany(args: {
+    where: {
+      provider: IntegrationProvider;
+      scopeKey: string;
+      objectType?: { in: string[] };
+      externalId?: { in: string[] };
+    };
+    select: { objectType: true; externalId: true; payloadHash: true };
+  }): Promise<Array<{ objectType: string; externalId: string; payloadHash: string }>>;
   upsert(args: {
     where: {
       provider_objectType_externalId_scopeKey: {
@@ -652,9 +668,47 @@ export async function ingestImladrisRawRecords(
     }
   }
 
+  // Hash-based write-skipping: batch-fetch the payloadHash of every row we are
+  // about to write so we can skip the upsert entirely when nothing changed.
+  // Without this, every cron cycle rewrites identical JSONB payloads and leaves
+  // a trail of dead tuples on this (large, JSONB-heavy) table.
+  const existingHashByKey = new Map<string, string>();
+  if (normalizedRecords.size > 0) {
+    try {
+      const groups = [...normalizedRecords.values()];
+      const existing = await rawRecords.findMany({
+        where: {
+          provider: input.provider,
+          scopeKey: rawRecordScopeKey,
+          objectType: { in: [...new Set(groups.map((group) => group.record.objectType))] },
+          externalId: { in: [...new Set(groups.map((group) => group.record.externalId))] },
+        },
+        select: { objectType: true, externalId: true, payloadHash: true },
+      });
+      for (const row of existing) {
+        existingHashByKey.set(`${row.objectType}:${row.externalId}`, row.payloadHash);
+      }
+    } catch (error) {
+      // A failed lookup is non-fatal: fall back to always upserting (prior
+      // behaviour), just without the write-skip optimization.
+      console.warn("imladris_raw_ingestion.hash_prefetch_failed", {
+        provider: input.provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   let acceptedCount = 0;
+  let unchangedCount = 0;
   for (const { record, inputCount } of normalizedRecords.values()) {
     try {
+      if (existingHashByKey.get(`${record.objectType}:${record.externalId}`) === record.payloadHash) {
+        // Stored payload is identical — skip the write but still count the
+        // record as accepted so ImladrisSourceSyncRun stats stay truthful.
+        acceptedCount += inputCount;
+        unchangedCount += 1;
+        continue;
+      }
       const sourceCreatedAt = observableDate(record.sourceCreatedAt, startedAt);
       const sourceUpdatedAt = observableDate(record.sourceUpdatedAt, startedAt);
       const occurredAt = observableDate(record.occurredAt, startedAt);
@@ -738,6 +792,9 @@ export async function ingestImladrisRawRecords(
     recordCount: input.records.length,
     acceptedCount,
     errorCount,
+    // Omit when zero so callers/tests that assert the prior result shape are
+    // unaffected; present only when the hash-skip actually avoided writes.
+    ...(unchangedCount > 0 ? { unchangedCount } : {}),
     statusPersistenceErrors,
   };
 }
