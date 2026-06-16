@@ -92,6 +92,10 @@ describe("ExpenseDashboard", () => {
     expect(screen.getByRole("heading", { name: "Arda Financial Dashboard" })).toBeTruthy();
     expect(screen.getByText(/Mercury Data \(Cash Basis\)/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Refresh data" })).toBeTruthy();
+    expect(screen.getByText("Board Burn Context")).toBeTruthy();
+    expect(screen.getByText("Primary burn driver")).toBeTruthy();
+    expect(screen.getByText("Payroll")).toBeTruthy();
+    expect(screen.getByText("Vendor concentration")).toBeTruthy();
     ["Overview", "Category x Month", "Categories", "Vendors", "Runway", "Recommendations"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });

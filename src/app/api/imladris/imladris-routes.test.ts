@@ -47,6 +47,7 @@ vi.mock("@/lib/imladris/company-readiness-setup", () => ({
       goalRecommendations: [],
       healthBands: [],
       sourceCoverage: [],
+      trendSeries: [],
       boardReadiness: {
         status: "ready",
         score: 100,
@@ -147,6 +148,7 @@ describe("Imladris API routes", () => {
         summary: expect.any(Object),
         goalProgress: expect.any(Array),
         healthBands: expect.any(Array),
+        trendSeries: expect.any(Array),
         metrics: expect.any(Array),
         trust: expect.any(Object),
       }),

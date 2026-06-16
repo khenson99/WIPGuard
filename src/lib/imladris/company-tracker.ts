@@ -7,7 +7,7 @@ import { buildAnalyticsMetricsLayer } from "@/lib/analytics/kpis";
 import { buildRevenueDashboardData } from "@/lib/analytics/revenue-dashboard";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
-import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
+import type { ImladrisDashboardDefinition, ImladrisMetricDefinition } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import type {
@@ -27,6 +27,7 @@ type GoalProgressStatus = "active" | "achieved" | "missed";
 type HealthBandStatus = "strong" | "watch" | "risk" | "missing";
 type SourceCoverageStatus = "available" | "missing" | "stale" | "error";
 type BoardReadinessStatus = "ready" | "watch" | "blocked";
+type TrendDirection = "up" | "down" | "flat";
 
 interface UserContext {
   userId: string | null;
@@ -180,6 +181,27 @@ export interface CompanyBoardReadiness {
   requiredActionCount: number;
 }
 
+export interface CompanyMetricTrendPoint {
+  periodEnd: string;
+  label: string;
+  value: number;
+  status: MetricStatus;
+}
+
+export interface CompanyMetricTrend {
+  key: string;
+  label: string;
+  unit: ImladrisMetricDefinition["unit"];
+  status: MetricStatus;
+  currentValue: number | null;
+  previousValue: number | null;
+  deltaAbsolute: number | null;
+  deltaPercent: number | null;
+  direction: TrendDirection;
+  points: CompanyMetricTrendPoint[];
+  caveats: string[];
+}
+
 export interface CompanyTrackerDashboardData {
   dashboard: ImladrisDashboardDefinition;
   summary: CompanyTrackerSummary;
@@ -188,6 +210,7 @@ export interface CompanyTrackerDashboardData {
   healthBands: CompanyHealthBand[];
   sourceCoverage: CompanySourceCoverage[];
   boardReadiness: CompanyBoardReadiness;
+  trendSeries: CompanyMetricTrend[];
   metrics: CompanyTrackerMetric[];
   trust: CompanyTrackerTrust;
 }
@@ -246,6 +269,77 @@ const COMPATIBLE_PAYLOAD_SNAPSHOT_KEYS = new Map<string, string[]>([
 const EMPTY_ANALYTICS_SNAPSHOT_MAP = new Map<string, AnalyticsSnapshotRow>();
 
 const BOARD_TARGET_METRICS = ["ARR", "RUNWAY", "BURN_RATE"] as const;
+
+const COMPANY_TREND_DEFINITIONS = [
+  {
+    key: "revenue.mrr",
+    sourceMetricKey: "revenue.mrr",
+    label: "ARR",
+    unit: "currency",
+    value: (payload: Record<string, unknown>) => {
+      const arr = numberValue(payload.arr);
+      const mrr = numberValue(payload.amount);
+      return arr ?? (mrr === null ? null : mrr * 12);
+    },
+  },
+  {
+    key: "revenue.mrr.monthly",
+    sourceMetricKey: "revenue.mrr",
+    label: "MRR",
+    unit: "currency",
+    value: (payload: Record<string, unknown>) => numberValue(payload.amount),
+  },
+  {
+    key: "finance.cash_runway_months",
+    sourceMetricKey: "finance.cash_runway_months",
+    label: "Runway",
+    unit: "months",
+    value: (payload: Record<string, unknown>) => numberValue(payload.months),
+  },
+  {
+    key: "finance.net_burn",
+    sourceMetricKey: "finance.net_burn",
+    label: "Net Burn",
+    unit: "currency",
+    value: (payload: Record<string, unknown>) =>
+      numberValue(payload.amount) ?? numberValue(payload.netBurn) ?? numberValue(payload.net_burn),
+  },
+  {
+    key: "sales.qualified_pipeline",
+    sourceMetricKey: "sales.qualified_pipeline",
+    label: "Qualified Pipeline",
+    unit: "currency",
+    value: (payload: Record<string, unknown>) => numberValue(payload.amount),
+  },
+  {
+    key: "marketing.pipeline_efficiency",
+    sourceMetricKey: "marketing.pipeline_efficiency",
+    label: "Pipeline Efficiency",
+    unit: "ratio",
+    value: (payload: Record<string, unknown>) => numberValue(payload.ratio),
+  },
+  {
+    key: "product.activation_rate",
+    sourceMetricKey: "product.activation_rate",
+    label: "Activation Rate",
+    unit: "percent",
+    value: (payload: Record<string, unknown>) => numberValue(payload.rate),
+  },
+  {
+    key: "customer_success.retention_risk",
+    sourceMetricKey: "customer_success.retention_risk",
+    label: "Retention Risk",
+    unit: "score",
+    value: (payload: Record<string, unknown>) =>
+      numberValue(payload.riskScore) ?? numberValue(payload.score),
+  },
+] satisfies Array<{
+  key: string;
+  sourceMetricKey: string;
+  label: string;
+  unit: ImladrisMetricDefinition["unit"];
+  value: (payload: Record<string, unknown>) => number | null;
+}>;
 
 function toDate(value: unknown): Date | null {
   const normalizedValue = scalarValue(value) ?? value;
@@ -1728,6 +1822,127 @@ function buildTrust(
   };
 }
 
+function trendPointLabel(periodEnd: string): string {
+  const parsed = toDate(periodEnd);
+  if (!parsed) return periodEnd.slice(0, 10);
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function trendDirection(deltaAbsolute: number | null): TrendDirection {
+  if (deltaAbsolute === null || Math.abs(deltaAbsolute) < 0.000001) return "flat";
+  return deltaAbsolute > 0 ? "up" : "down";
+}
+
+function trendDeltaPercent(currentValue: number | null, previousValue: number | null): number | null {
+  if (currentValue === null || previousValue === null || previousValue === 0) return null;
+  return round(((currentValue - previousValue) / Math.abs(previousValue)) * 100, 1);
+}
+
+function canonicalRowsByTrendPeriod(
+  rows: CanonicalMetricRow[],
+  sourceMetricKey: string,
+  context: UserContext,
+): CanonicalMetricRow[] {
+  const candidates = rows
+    .filter((row) => row.metricKey === sourceMetricKey)
+    .filter((row) => usableMetricRow(row) !== null)
+    .sort((left, right) => {
+      const periodDelta = metricTimestamp(right) - metricTimestamp(left);
+      if (periodDelta !== 0) return periodDelta;
+      const scopeDelta = scopeSpecificity(right, context) - scopeSpecificity(left, context);
+      if (scopeDelta !== 0) return scopeDelta;
+      return rowComputedAt(right) - rowComputedAt(left);
+    });
+  const byPeriod = new Map<string, CanonicalMetricRow>();
+  for (const row of candidates) {
+    const period = toIso(row.periodEnd);
+    if (period && !byPeriod.has(period)) byPeriod.set(period, row);
+  }
+  return [...byPeriod.values()].sort((left, right) => metricTimestamp(left) - metricTimestamp(right));
+}
+
+function trendFromFallbackMetric(metric: CompanyTrackerMetric): CompanyMetricTrendPoint[] {
+  if (metric.status !== "partial") return [];
+  const periodEnd = metric.periodEnd;
+  if (!periodEnd) return [];
+  return [
+    {
+      periodEnd,
+      label: trendPointLabel(periodEnd),
+      value: 0,
+      status: metric.status,
+    },
+  ];
+}
+
+function buildTrendSeries(input: {
+  canonicalRows: CanonicalMetricRow[];
+  metrics: CompanyTrackerMetric[];
+  context: UserContext;
+}): CompanyMetricTrend[] {
+  const metricByKey = new Map(input.metrics.map((metric) => [metric.key, metric]));
+
+  return COMPANY_TREND_DEFINITIONS.map((definition) => {
+    const metric = metricByKey.get(definition.sourceMetricKey);
+    const points = canonicalRowsByTrendPeriod(
+      input.canonicalRows,
+      definition.sourceMetricKey,
+      input.context,
+    )
+      .map((row) => {
+        const periodEnd = toIso(row.periodEnd);
+        const value = definition.value(metricValueView(row.value));
+        if (!periodEnd || value === null) return null;
+        return {
+          periodEnd,
+          label: trendPointLabel(periodEnd),
+          value,
+          status: metricStatus(row.status),
+        };
+      })
+      .filter((point): point is CompanyMetricTrendPoint => point !== null);
+
+    const fallbackPoints = points.length === 0 && metric?.status === "partial"
+      ? trendFromFallbackMetric(metric)
+          .map((point) => {
+            const value = definition.value(metricValueView(metric.value));
+            return value === null ? null : { ...point, value };
+          })
+          .filter((point): point is CompanyMetricTrendPoint => point !== null)
+      : [];
+    const allPoints = points.length > 0 ? points : fallbackPoints;
+    const currentValue = allPoints.at(-1)?.value ?? null;
+    const previousValue = allPoints.length > 1 ? allPoints.at(-2)?.value ?? null : null;
+    const deltaAbsolute =
+      currentValue !== null && previousValue !== null ? round(currentValue - previousValue) : null;
+    const caveats = new Set<string>(metric?.caveats ?? []);
+    if (allPoints.length === 1) {
+      caveats.add(`Only one historical point is available for ${definition.label}.`);
+    }
+    if (allPoints.length === 0 && metric?.status === "missing") {
+      caveats.add(`${definition.label} trend is unavailable because the metric is missing.`);
+    }
+
+    return {
+      key: definition.key,
+      label: definition.label,
+      unit: definition.unit,
+      status: metric?.status ?? "missing",
+      currentValue,
+      previousValue,
+      deltaAbsolute,
+      deltaPercent: trendDeltaPercent(currentValue, previousValue),
+      direction: trendDirection(deltaAbsolute),
+      points: allPoints,
+      caveats: [...caveats],
+    };
+  });
+}
+
 function buildBoardReadiness(input: {
   summary: CompanyTrackerSummary;
   metrics: CompanyTrackerMetric[];
@@ -1890,6 +2105,11 @@ export async function buildCompanyTrackerDashboard(input: {
     sourceCoverage,
     trust,
   });
+  const trendSeries = buildTrendSeries({
+    canonicalRows: typedCanonicalRows,
+    metrics,
+    context,
+  });
 
   return {
     dashboard,
@@ -1904,6 +2124,7 @@ export async function buildCompanyTrackerDashboard(input: {
     }),
     sourceCoverage,
     boardReadiness,
+    trendSeries,
     metrics,
     trust,
   };

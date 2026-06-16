@@ -77,6 +77,7 @@ function dashboardWithRecommendations(recommendations: Array<{ metric: string; t
       requiredActionCount: recommendations.length,
     },
     metrics: [],
+    trendSeries: [],
     trust: {
       summary: { ready: 0, partial: 0, stale: 0, missing: 0, error: 0, warnings: 0 },
       warnings: [],

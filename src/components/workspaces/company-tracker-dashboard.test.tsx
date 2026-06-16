@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CompanyTrackerDashboard } from "./company-tracker-dashboard";
 import type { CompanyTrackerDashboardData } from "@/lib/imladris/company-tracker";
@@ -10,6 +11,8 @@ const router = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
+
+vi.mock("recharts", async () => import("@/lib/__mocks__/recharts"));
 
 const DATA: CompanyTrackerDashboardData = {
   dashboard: {
@@ -69,6 +72,16 @@ const DATA: CompanyTrackerDashboardData = {
       detail: "6-12 months is watch; 12+ months is strong.",
       sourceMetricKeys: ["finance.cash_runway_months"],
     },
+    {
+      id: "burn_multiple",
+      label: "Burn Multiple",
+      value: 1.07,
+      unit: "ratio",
+      status: "watch",
+      formula: "finance.net_burn.value.amount / net new ARR",
+      detail: "Lower is better; <=1 is strong and <=2 is watch.",
+      sourceMetricKeys: ["finance.net_burn", "revenue.mrr"],
+    },
   ],
   sourceCoverage: [
     {
@@ -94,6 +107,39 @@ const DATA: CompanyTrackerDashboardData = {
     requiredActions: ["Configure RUNWAY FinancialGoal target."],
     requiredActionCount: 1,
   },
+  trendSeries: [
+    {
+      key: "revenue.mrr",
+      label: "ARR",
+      unit: "currency",
+      status: "ready",
+      currentValue: 384_000,
+      previousValue: 300_000,
+      deltaAbsolute: 84_000,
+      deltaPercent: 28,
+      direction: "up",
+      points: [
+        { periodEnd: "2026-04-30T23:59:59.999Z", label: "Apr 2026", value: 300_000, status: "ready" },
+        { periodEnd: "2026-05-31T23:59:59.999Z", label: "May 2026", value: 384_000, status: "ready" },
+      ],
+      caveats: [],
+    },
+    {
+      key: "finance.cash_runway_months",
+      label: "Runway",
+      unit: "months",
+      status: "ready",
+      currentValue: 8.5,
+      previousValue: null,
+      deltaAbsolute: null,
+      deltaPercent: null,
+      direction: "flat",
+      points: [
+        { periodEnd: "2026-05-31T23:59:59.999Z", label: "May 2026", value: 8.5, status: "ready" },
+      ],
+      caveats: ["Only one historical point is available for Runway."],
+    },
+  ],
   metrics: [
     {
       key: "revenue.mrr",
@@ -139,8 +185,15 @@ describe("CompanyTrackerDashboard", () => {
     render(<CompanyTrackerDashboard data={DATA} />);
 
     expect(screen.getByRole("heading", { name: "Company Tracker" })).toBeTruthy();
+    expect(screen.getByText("Board Cockpit")).toBeTruthy();
+    expect(screen.getByText("Capital")).toBeTruthy();
+    expect(screen.getByText("Growth")).toBeTruthy();
+    expect(screen.getByText("Customers")).toBeTruthy();
+    expect(screen.getByText("Trust")).toBeTruthy();
     expect(screen.getAllByText("ARR").length).toBeGreaterThan(0);
     expect(screen.getByText("$384.0k")).toBeTruthy();
+    expect(screen.getByText("+$84.0k")).toBeTruthy();
+    expect(screen.getByText("+28.0%")).toBeTruthy();
     expect(screen.getByText("Goal Progress")).toBeTruthy();
     expect(screen.getByText("Growth Engine")).toBeTruthy();
     expect(screen.getByText("Board Readiness")).toBeTruthy();
@@ -149,6 +202,27 @@ describe("CompanyTrackerDashboard", () => {
     expect(screen.getByText("Configure RUNWAY FinancialGoal target.")).toBeTruthy();
     expect(screen.getByText("Data Trust")).toBeTruthy();
     expect(screen.getByText("finance.cash_runway_months.value.months")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open expense drilldown/i }).getAttribute("href")).toBe("/metrics/expenses");
+    expect(screen.getByRole("link", { name: /Open customer health/i }).getAttribute("href")).toBe("/metrics/customer-health");
+    expect(screen.getByRole("link", { name: /Review goals/i }).getAttribute("href")).toBe("/goals");
+    expect(screen.getByRole("link", { name: /Build investor report/i }).getAttribute("href")).toBe("/reports");
+  });
+
+  it("switches board cockpit views and expands metric evidence", async () => {
+    const user = userEvent.setup();
+    render(<CompanyTrackerDashboard data={DATA} />);
+
+    await user.click(screen.getByRole("button", { name: "Trust" }));
+    expect(screen.getByText("Metric Evidence")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /MRR evidence/i }));
+    expect(screen.getByText("revenue-mrr-v1")).toBeTruthy();
+    expect(screen.getByText("Lineage rows")).toBeTruthy();
+    expect(screen.getByText("Source Coverage")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Capital" }));
+    expect(screen.getByText("Capital Plan")).toBeTruthy();
+    expect(screen.getByText("Burn Multiple")).toBeTruthy();
   });
 
   it("runs board readiness setup from the readiness card and refreshes the route", async () => {
@@ -430,7 +504,7 @@ describe("CompanyTrackerDashboard", () => {
       />,
     );
 
-    expect(screen.getByText("Confidence 91% · lineage 2")).toBeTruthy();
+    expect(screen.getAllByText("Confidence 91% · lineage 2").length).toBeGreaterThan(0);
     expect(screen.getByText("91%")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.queryByText(/\bNaN%\b/)).toBeNull();

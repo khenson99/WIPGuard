@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CustomerHealthDashboard } from "./customer-health-dashboard";
 import type { CustomerHealthDashboardData } from "@/lib/retention/customer-health-dashboard";
@@ -137,6 +138,23 @@ describe("CustomerHealthDashboard", () => {
     expect(screen.getByText("Tenant Two")).toBeTruthy();
     expect(screen.getByText("Current-month usage collapse")).toBeTruthy();
     expect(screen.getByText("Tenant One")).toBeTruthy();
+  });
+
+  it("filters the board risk table by customer status and missing source", async () => {
+    const user = userEvent.setup();
+    render(<CustomerHealthDashboard data={DATA} />);
+
+    expect(screen.getByText("Board Customer Risk")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "At Risk" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Missing Coda" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "At Risk" }));
+    expect(screen.getAllByText("Tenant Two").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Tenant One")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Missing Coda" }));
+    expect(screen.getAllByText("Tenant Two").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Tenant One")).toBeNull();
   });
 
   it("renders an empty state when no accounts have materialized health", () => {

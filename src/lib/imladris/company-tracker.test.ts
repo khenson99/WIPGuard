@@ -181,6 +181,35 @@ describe("buildCompanyTrackerDashboard", () => {
         }),
       ]),
     );
+    expect(dashboard.trendSeries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "revenue.mrr",
+          label: "ARR",
+          unit: "currency",
+          currentValue: 384_000,
+          previousValue: 300_000,
+          deltaAbsolute: 84_000,
+          deltaPercent: 28,
+          direction: "up",
+          points: [
+            expect.objectContaining({ value: 300_000, status: "ready" }),
+            expect.objectContaining({ value: 384_000, status: "ready" }),
+          ],
+        }),
+        expect.objectContaining({
+          key: "finance.cash_runway_months",
+          label: "Runway",
+          unit: "months",
+          currentValue: 8.5,
+          previousValue: null,
+          deltaAbsolute: null,
+          deltaPercent: null,
+          direction: "flat",
+          caveats: ["Only one historical point is available for Runway."],
+        }),
+      ]),
+    );
     expect(dashboard.trust.summary.ready).toBeGreaterThan(0);
     expect(dashboard.metrics.find((metric) => metric.key === "revenue.mrr")).toMatchObject({
       status: "ready",
