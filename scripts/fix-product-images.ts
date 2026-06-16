@@ -371,7 +371,7 @@ async function main() {
   console.log(`\nPhase 1: ${needsMm5Fix.length} URLs potentially fixable with /mm5/ prefix`);
 
   let fixedMm5 = 0;
-  let stillBroken: typeof rowsToCheck = [];
+  const stillBroken: typeof rowsToCheck = [];
 
   for (let i = 0; i < needsMm5Fix.length; i++) {
     const { row, imageUrl } = needsMm5Fix[i]!;
