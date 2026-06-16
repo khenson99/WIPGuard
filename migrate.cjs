@@ -199,6 +199,180 @@ function stripLeadingSqlComments(statement) {
   return remaining;
 }
 
+/**
+ * Return `sql` with all comments removed (line `--` and block `/* *​/`),
+ * leaving string literals, quoted identifiers, and dollar-quoted bodies
+ * intact. Used to test for keywords (e.g. CONCURRENTLY) in *executable* SQL
+ * without false-matching the same word inside an explanatory comment.
+ *
+ * Replaces each comment with a single space so adjacent tokens never fuse.
+ */
+function stripSqlComments(sql) {
+  let out = "";
+  let index = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let dollarTag = null;
+
+  while (index < sql.length) {
+    const current = sql[index];
+    const next = sql[index + 1];
+
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, index)) {
+        out += dollarTag;
+        index += dollarTag.length;
+        dollarTag = null;
+        continue;
+      }
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (inSingleQuote) {
+      out += current;
+      if (current === "'" && next === "'") {
+        out += next;
+        index += 2;
+        continue;
+      }
+      if (current === "'") inSingleQuote = false;
+      index++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      out += current;
+      if (current === '"' && next === '"') {
+        out += next;
+        index += 2;
+        continue;
+      }
+      if (current === '"') inDoubleQuote = false;
+      index++;
+      continue;
+    }
+
+    if (current === "-" && next === "-") {
+      const newline = sql.indexOf("\n", index);
+      if (newline === -1) {
+        index = sql.length;
+      } else {
+        out += "\n";
+        index = newline + 1;
+      }
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      const end = sql.indexOf("*/", index + 2);
+      index = end === -1 ? sql.length : end + 2;
+      out += " ";
+      continue;
+    }
+
+    if (current === "'") {
+      inSingleQuote = true;
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (current === '"') {
+      inDoubleQuote = true;
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (current === "$") {
+      const match = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if (match) {
+        dollarTag = match[0];
+        out += dollarTag;
+        index += dollarTag.length;
+        continue;
+      }
+    }
+
+    out += current;
+    index++;
+  }
+
+  return out;
+}
+
+/**
+ * Replace the *contents* of single-quoted strings, double-quoted identifiers,
+ * and dollar-quoted bodies with whitespace, leaving the delimiters and all
+ * other SQL intact. Assumes comments are already removed (run after
+ * stripSqlComments). Lets a keyword scan ignore text that only appears as data
+ * (e.g. an INSERT value of 'run CONCURRENTLY later').
+ */
+function blankQuotedRegions(sql) {
+  let out = "";
+  let index = 0;
+
+  while (index < sql.length) {
+    const current = sql[index];
+
+    if (current === "$") {
+      const match = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if (match) {
+        const tag = match[0];
+        const end = sql.indexOf(tag, index + tag.length);
+        if (end === -1) {
+          out += tag;
+          index = sql.length;
+        } else {
+          out += tag + " " + tag;
+          index = end + tag.length;
+        }
+        continue;
+      }
+    }
+
+    if (current === "'" || current === '"') {
+      const quote = current;
+      out += quote;
+      index++;
+      while (index < sql.length) {
+        if (sql[index] === quote && sql[index + 1] === quote) {
+          index += 2; // escaped quote inside the literal
+          continue;
+        }
+        if (sql[index] === quote) break;
+        index++;
+      }
+      out += quote;
+      index++; // consume the closing quote (or run past EOF harmlessly)
+      continue;
+    }
+
+    out += current;
+    index++;
+  }
+
+  return out;
+}
+
+/**
+ * True when the migration runs `CONCURRENTLY` in an *executable* statement.
+ * The custom runner applies each migration inside a transaction, and Postgres
+ * forbids CREATE/DROP/REINDEX ... CONCURRENTLY in a transaction block — so such
+ * a migration genuinely cannot be applied here and must be refused.
+ *
+ * Comments and quoted text are neutralized first so CONCURRENTLY is only
+ * detected as a bare keyword. A migration may *mention* CONCURRENTLY in an
+ * operator note (e.g. "you MAY pre-create this by hand with CREATE INDEX
+ * CONCURRENTLY ...") while its real statements are plain, transaction-safe
+ * `CREATE INDEX IF NOT EXISTS`; testing the raw text would wrongly refuse it.
+ */
+function migrationUsesConcurrently(sql) {
+  return /\bCONCURRENTLY\b/i.test(blankQuotedRegions(stripSqlComments(sql)));
+}
+
 function isEnumAddValueStatement(statement) {
   return /^ALTER\s+TYPE\b[\s\S]*\bADD\s+VALUE\b/i.test(
     stripLeadingSqlComments(statement),
@@ -380,9 +554,12 @@ async function run() {
 
       const sqlFile = path.join(MIGRATIONS_DIR, dir, "migration.sql");
       const sql = fs.readFileSync(sqlFile, "utf-8");
-      if (/\bCONCURRENTLY\b/i.test(sql)) {
+      if (migrationUsesConcurrently(sql)) {
         console.error(
-          `Migration ${dir} contains CONCURRENTLY; refusing to run outside a transaction`,
+          `Migration ${dir} runs CONCURRENTLY in an executable statement; ` +
+            `the in-transaction runner cannot apply it. Pre-create the index ` +
+            `by hand (CREATE INDEX CONCURRENTLY ...) or move it to its own ` +
+            `out-of-transaction step.`,
         );
         process.exit(1);
       }
@@ -457,8 +634,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  blankQuotedRegions,
   computePendingMigrations,
   listMigrationDirs,
+  migrationUsesConcurrently,
   splitMigrationSql,
   splitSqlStatements,
+  stripSqlComments,
 };
