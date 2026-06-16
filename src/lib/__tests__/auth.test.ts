@@ -164,8 +164,46 @@ describe("auth options", () => {
     expect(authOptions.debug).toBe(false);
   });
 
-  it("redacts provider secrets and cookie values from debug log metadata", async () => {
+  it("silences the custom debug handler when NEXTAUTH_DEBUG is unset", async () => {
+    // Regression guard: next-auth v4 invokes a custom logger.debug even when
+    // the `debug` option is false — setLogger() installs the debug-flag no-op
+    // first, then unconditionally overwrites it with the user-supplied
+    // handler. An ungated handler is exactly how GET_AUTHORIZATION_URL
+    // entries (provider config, cookie payloads) kept reaching production
+    // Railway logs with NEXTAUTH_DEBUG unset.
     const authOptions = await loadAuthOptions();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      authOptions.logger?.debug?.("GET_AUTHORIZATION_URL", {
+        provider: { id: "google", clientSecret: "GOCSPX-super-secret" },
+      });
+      expect(logSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("silences the custom debug handler in production even with NEXTAUTH_DEBUG=true", async () => {
+    const authOptions = await loadAuthOptions({
+      NODE_ENV: "production",
+      NEXTAUTH_DEBUG: "true",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      authOptions.logger?.debug?.("GET_AUTHORIZATION_URL", {
+        provider: { id: "google", clientSecret: "GOCSPX-super-secret" },
+      });
+      expect(logSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("redacts provider secrets and cookie values from debug log metadata", async () => {
+    // Debug output is opt-in; even once opted in, secrets must be redacted.
+    const authOptions = await loadAuthOptions({ NEXTAUTH_DEBUG: "true" });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
     try {
