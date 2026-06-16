@@ -387,6 +387,7 @@ async function executeCronSync(input: {
       health: null as unknown,
       pruning: null as unknown,
       retention: null as unknown,
+      dataRetention: null as unknown,
     };
 
     if (analyticsSyncResult.status === "fulfilled") {
@@ -394,6 +395,9 @@ async function executeCronSync(input: {
       // top-level fields — external monitors read these separately.
       settled.analytics = analyticsSyncResult.value.refresh;
       settled.pruning = analyticsSyncResult.value.pruning;
+      // Bounded operational-data retention sweep (lineage/outbox/audit/funnel)
+      // — see src/lib/ops/data-retention.ts.
+      settled.dataRetention = analyticsSyncResult.value.dataRetention;
       failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {
       const msg = analyticsSyncResult.reason instanceof Error ? analyticsSyncResult.reason.message : String(analyticsSyncResult.reason);

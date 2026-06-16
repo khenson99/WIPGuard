@@ -1,7 +1,11 @@
 import { GoalMetric, GoalStatus } from "@/generated/prisma/client";
 import { buildImladrisRawRecordsFromPayload } from "@/lib/imladris/raw-records";
 import { ingestImladrisRawRecords } from "@/lib/imladris/ingestion";
-import { materializeImladrisCanonicalMetrics, type MaterializedImladrisMetricResult } from "@/lib/imladris/materialization";
+import {
+  imladrisCanonicalPeriodEnd,
+  materializeImladrisCanonicalMetrics,
+  type MaterializedImladrisMetricResult,
+} from "@/lib/imladris/materialization";
 import { buildCompanyTrackerDashboard, type CompanyTrackerDashboardData } from "@/lib/imladris/company-tracker";
 import { getImladrisDashboardDefinition, REQUIRED_IMLADRIS_PROVIDERS } from "@/lib/imladris/catalog";
 import {
@@ -303,7 +307,10 @@ export async function runCompanyReadinessSetup(input: {
   now?: Date;
 }): Promise<CompanyReadinessSetupResult> {
   const now = input.now ?? new Date();
-  const periodEnd = now;
+  // Stable per-day boundary — periodEnd participates in the canonical metric
+  // upsert key; a raw `now` here mints a new metric value (and full lineage
+  // copy) on every invocation. See imladrisCanonicalPeriodEnd().
+  const periodEnd = imladrisCanonicalPeriodEnd(now);
   const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
   const snapshots = await loadLatestCompanySnapshots({
     prisma: input.prisma,

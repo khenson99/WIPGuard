@@ -125,9 +125,31 @@ type CanonicalMetricDelegate = {
 };
 
 type MetricLineageDelegate = {
-  deleteMany(args: { where: { metricValueId: string } }): Promise<unknown>;
+  deleteMany(args: {
+    where: { metricValueId: string; createdAt?: { lt: Date } };
+  }): Promise<unknown>;
   createMany(args: { data: Array<Record<string, unknown>> }): Promise<unknown>;
 };
+
+/**
+ * Canonical materialization period boundary.
+ *
+ * The canonical metric upsert key includes `periodEnd`, so periodEnd MUST be
+ * stable across sync runs within the same period or every run inserts a new
+ * metric value row (plus a full copy of its lineage evidence) instead of
+ * updating the existing one. Passing a raw `new Date()` here is what filled
+ * the production Postgres volume in June 2026 (~41.5M lineage rows in one
+ * week — see docs/runbooks/postgres-disk-incident-2026-06.md).
+ *
+ * Truncating to the start of the current UTC day gives one metric value per
+ * metricKey per day: repeated runs within a day update in place, and history
+ * accrues at a bounded one-row-per-day rate.
+ */
+export function imladrisCanonicalPeriodEnd(now: Date): Date {
+  const periodEnd = new Date(now);
+  periodEnd.setUTCHours(0, 0, 0, 0);
+  return periodEnd;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -1315,28 +1337,42 @@ async function replaceLineage(input: {
   calculationVersion: string;
   asOf: Date;
 }) {
+  // Insert the fresh evidence set FIRST (with an explicit createdAt stamp),
+  // then delete everything older than the stamp. The two statements are not
+  // transactional, so this ordering matters:
+  //   - delete-then-insert loses lineage permanently if the insert fails;
+  //   - insert-then-prune at worst leaves a stale duplicate set that the
+  //     next run (or the data-retention sweep) removes.
+  // Concurrent runs against the same metricValueId converge for the same
+  // reason: each prune removes every row older than its own insert batch.
+  const insertStamp = new Date();
+  if (input.records.length > 0) {
+    await input.metricLineage.createMany({
+      data: input.records.map((record) => ({
+        metricValueId: input.metricValueId,
+        rawRecordId: record.id,
+        sourceKey: sourceKeyForProvider(record.provider),
+        sourceType: recordObjectType(record),
+        sourceId: rawRecordSourceId(record),
+        capturedAt: firstDateAtOrBefore(
+          input.asOf,
+          record.occurredAt,
+          record.sourceUpdatedAt,
+          record.sourceCreatedAt,
+        ),
+        createdAt: insertStamp,
+        metadata: {
+          provider: record.provider,
+          calculationVersion: input.calculationVersion,
+        },
+      })),
+    });
+  }
   await input.metricLineage.deleteMany({
-    where: { metricValueId: input.metricValueId },
-  });
-  if (input.records.length === 0) return;
-  await input.metricLineage.createMany({
-    data: input.records.map((record) => ({
+    where: {
       metricValueId: input.metricValueId,
-      rawRecordId: record.id,
-      sourceKey: sourceKeyForProvider(record.provider),
-      sourceType: recordObjectType(record),
-      sourceId: rawRecordSourceId(record),
-      capturedAt: firstDateAtOrBefore(
-        input.asOf,
-        record.occurredAt,
-        record.sourceUpdatedAt,
-        record.sourceCreatedAt,
-      ),
-      metadata: {
-        provider: record.provider,
-        calculationVersion: input.calculationVersion,
-      },
-    })),
+      createdAt: { lt: insertStamp },
+    },
   });
 }
 

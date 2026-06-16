@@ -15,6 +15,23 @@ vi.mock("@/lib/analytics/snapshots", () => ({
 
 vi.mock("@/lib/imladris/materialization", () => ({
   materializeImladrisCanonicalMetrics: vi.fn(),
+  // Mirror the real implementation: stable start-of-UTC-day boundary.
+  imladrisCanonicalPeriodEnd: (now: Date) => {
+    const periodEnd = new Date(now);
+    periodEnd.setUTCHours(0, 0, 0, 0);
+    return periodEnd;
+  },
+}));
+
+vi.mock("@/lib/ops/data-retention", () => ({
+  runDataRetentionSweep: vi.fn(async () => ({
+    enabled: true,
+    dryRun: false,
+    steps: [],
+    totalDeleted: 0,
+    databaseSizeBytes: null,
+    durationMs: 0,
+  })),
 }));
 
 vi.mock("@/lib/sync/users", () => ({
@@ -84,8 +101,8 @@ describe("runAnalyticsSync", () => {
         userId: "user_1",
         organizationId: "org_1",
       },
-      periodStart: new Date("2026-05-02T12:00:00.000Z"),
-      periodEnd: new Date("2026-06-01T12:00:00.000Z"),
+      periodStart: new Date("2026-05-02T00:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T00:00:00.000Z"),
       now: new Date("2026-06-01T12:00:00.000Z"),
     });
     expect(materializeImladrisCanonicalMetrics).toHaveBeenNthCalledWith(2, {
@@ -94,16 +111,16 @@ describe("runAnalyticsSync", () => {
         userId: "user_2",
         organizationId: null,
       },
-      periodStart: new Date("2026-05-02T12:00:00.000Z"),
-      periodEnd: new Date("2026-06-01T12:00:00.000Z"),
+      periodStart: new Date("2026-05-02T00:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T00:00:00.000Z"),
       now: new Date("2026-06-01T12:00:00.000Z"),
     });
     expect(result.imladris).toEqual([
       {
         userId: "user_1",
         organizationId: "org_1",
-        periodStart: "2026-05-02T12:00:00.000Z",
-        periodEnd: "2026-06-01T12:00:00.000Z",
+        periodStart: "2026-05-02T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
         metrics: [
           expect.objectContaining({
             metricKey: "development.delivery_health",
@@ -114,8 +131,8 @@ describe("runAnalyticsSync", () => {
       {
         userId: "user_2",
         organizationId: null,
-        periodStart: "2026-05-02T12:00:00.000Z",
-        periodEnd: "2026-06-01T12:00:00.000Z",
+        periodStart: "2026-05-02T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
         metrics: [
           expect.objectContaining({
             metricKey: "development.delivery_health",
@@ -257,8 +274,8 @@ describe("runAnalyticsSync", () => {
       {
         userId: "user_1",
         organizationId: "org_1",
-        periodStart: "2026-05-02T12:00:00.000Z",
-        periodEnd: "2026-06-01T12:00:00.000Z",
+        periodStart: "2026-05-02T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
         metrics: [
           expect.objectContaining({
             metricKey: "development.delivery_health",
@@ -270,8 +287,8 @@ describe("runAnalyticsSync", () => {
       {
         userId: "user_2",
         organizationId: null,
-        periodStart: "2026-05-02T12:00:00.000Z",
-        periodEnd: "2026-06-01T12:00:00.000Z",
+        periodStart: "2026-05-02T00:00:00.000Z",
+        periodEnd: "2026-06-01T00:00:00.000Z",
         metrics: [
           expect.objectContaining({
             metricKey: "development.delivery_health",

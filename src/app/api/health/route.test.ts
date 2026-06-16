@@ -4,6 +4,7 @@ import packageJson from "../../../../package.json";
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
   },
 }));
 
@@ -22,6 +23,10 @@ describe("GET /api/health", () => {
     const { poolMonitor } = await import("@/lib/pool-monitor");
 
     vi.mocked(prisma.$queryRaw).mockResolvedValue(undefined as never);
+    // Storage check: ~2 GB database against the default 20 GB volume.
+    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
+      { size: BigInt(2_000_000_000) },
+    ] as never);
     vi.mocked(poolMonitor.getHealthStatus).mockReturnValue({
       status: "healthy",
       pool: {
@@ -60,8 +65,85 @@ describe("GET /api/health", () => {
           idle: 3,
           waiting: 0,
         },
+        storage: {
+          status: "ok",
+          databaseSizeMb: 2000,
+          volumeCapacityMb: 20000,
+          usagePercent: 10,
+        },
       },
       uptime: 1234,
+    });
+  });
+
+  it("reports a storage warning without failing the health check", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { prisma } = await import("@/lib/prisma");
+    // 16 GB of 20 GB = 80% -> above the 75% warn threshold.
+    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
+      { size: BigInt(16_000_000_000) },
+    ] as never);
+
+    try {
+      const { GET } = await import("@/app/api/health/route");
+      const response = await GET();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.status).toBe("ok");
+      expect(body.checks.storage).toMatchObject({
+        status: "warning",
+        databaseSizeMb: 16000,
+        usagePercent: 80,
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "[health:storage]",
+        expect.stringContaining('"warning"'),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("returns 503 degraded when disk usage crosses the critical threshold", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { prisma } = await import("@/lib/prisma");
+    // 18.6 GB of 20 GB = 93% -> the June 2026 incident level.
+    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValue([
+      { size: BigInt(18_598_000_000) },
+    ] as never);
+
+    try {
+      const { GET } = await import("@/app/api/health/route");
+      const response = await GET();
+      const body = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(body.status).toBe("degraded");
+      expect(body.checks.storage).toMatchObject({
+        status: "critical",
+        usagePercent: 93,
+      });
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("degrades the storage check to unknown when the size query fails", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.$queryRawUnsafe).mockRejectedValue(
+      new Error("permission denied"),
+    );
+
+    const { GET } = await import("@/app/api/health/route");
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("ok");
+    expect(body.checks.storage).toMatchObject({
+      status: "unknown",
+      error: "permission denied",
     });
   });
 

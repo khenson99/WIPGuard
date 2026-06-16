@@ -314,8 +314,8 @@ describe("runCompanyReadinessSetup", () => {
     expect(materializeImladrisCanonicalMetrics).toHaveBeenCalledWith({
       prisma,
       context: CONTEXT,
-      periodStart: new Date("2026-05-02T12:00:00.000Z"),
-      periodEnd: new Date("2026-06-01T12:00:00.000Z"),
+      periodStart: new Date("2026-05-02T00:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T00:00:00.000Z"),
       now: new Date("2026-06-01T12:00:00.000Z"),
     });
     expect(prisma.financialGoal.create).toHaveBeenCalledTimes(3);

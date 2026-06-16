@@ -19,6 +19,7 @@
     "retention:run": "npx tsx scripts/retention/run-all.ts",
     "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
     "ops:backfill-google-oauth-scopes": "node ./scripts/backfill-google-oauth-scope-aliases.cjs",
+    "ops:db-disk-cleanup": "npx tsx scripts/ops/db-disk-cleanup.ts",
     "prepare": "husky",
     "prebuild": "npm run db:generate",
     "precommit:quality": "lint-staged",

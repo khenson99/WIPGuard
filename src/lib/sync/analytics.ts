@@ -25,9 +25,14 @@ import type { PrismaClientType } from '@/lib/prisma';
 import { runAnalyticsRefresh } from '@/lib/analytics/refresh-runner';
 import { pruneAnalyticsSnapshots } from '@/lib/analytics/snapshots';
 import {
+  imladrisCanonicalPeriodEnd,
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
+import {
+  runDataRetentionSweep,
+  type DataRetentionSummary,
+} from '@/lib/ops/data-retention';
 import { discoverConnectedUserIds } from './users';
 
 type RollingRangePreset = '7d' | '30d' | '90d';
@@ -50,6 +55,8 @@ export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
   imladris: ImladrisMaterializationSyncResult[];
+  /** Bounded retention sweep over operational tables (lineage, outbox, audit, funnel). */
+  dataRetention: DataRetentionSummary;
 }
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
@@ -150,7 +157,11 @@ async function runImladrisMaterializationSync(input: {
     input.prisma,
     input.userIds,
   );
-  const periodEnd = input.now;
+  // Stable per-day boundary — periodEnd is part of the canonical upsert key,
+  // so it must NOT change between runs within the same day. Passing raw
+  // `input.now` here created a new metric value (plus a full lineage copy)
+  // every sync run and filled the production disk in June 2026.
+  const periodEnd = imladrisCanonicalPeriodEnd(input.now);
   const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
 
   return Promise.all(
@@ -216,6 +227,15 @@ export async function runAnalyticsSync(
   const olderThanDays = input.pruneOlderThanDays ?? parseDefaultRetentionDays();
   const now = input.now ?? new Date();
 
+  // Run the bounded data-retention sweep FIRST: it frees storage and must
+  // not be skipped when the (much heavier) refresh/materialization phases
+  // fail or run out of memory. The sweep never throws — failures are
+  // reported inside its summary.
+  const dataRetention = await runDataRetentionSweep({
+    prisma: input.prisma,
+    now,
+  });
+
   const refresh = await runAnalyticsRefresh({
     userIds,
     rangePresets,
@@ -239,5 +259,5 @@ export async function runAnalyticsSync(
     }),
   ]);
 
-  return { refresh, pruning, imladris };
+  return { refresh, pruning, imladris, dataRetention };
 }

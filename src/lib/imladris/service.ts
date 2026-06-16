@@ -13,6 +13,18 @@ import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { IntegrationProvider } from "@/generated/prisma/client";
 import type { PrismaClientType } from "@/lib/prisma";
 
+/**
+ * Cap on lineage (evidence) rows loaded per canonical metric value.
+ *
+ * This view emits full per-row evidence, so it can't use the SQL-aggregate
+ * shortcut the company dashboard uses. Without a cap, a single bloated
+ * metric value (the June 2026 incident had values carrying ~300K lineage
+ * rows) pulls enough rows into the Node heap to OOM-crash the app. A few
+ * hundred evidence rows is far more than any UI surfaces; the bound only
+ * truncates pathological rows. See docs/runbooks/postgres-disk-incident-2026-06.md.
+ */
+const MAX_LINEAGE_EVIDENCE_ROWS = 500;
+
 type SourceStatus = "connected" | "missing" | "partial" | "stale" | "error";
 type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
 
@@ -1554,6 +1566,7 @@ export async function buildImladrisMetrics(input: {
       include: {
         lineage: {
           orderBy: [{ createdAt: "asc" }],
+          take: MAX_LINEAGE_EVIDENCE_ROWS,
         },
       },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
