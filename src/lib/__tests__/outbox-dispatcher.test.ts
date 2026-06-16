@@ -144,19 +144,21 @@ describe("outbox-dispatcher", () => {
     expect(mockSendSlackNotification).not.toHaveBeenCalled();
   });
 
-  it("fails loudly for customer_success.outreach.send (no delivery handler yet)", async () => {
-    // Must NOT silently no-op: the message is recorded QUEUED and this event is
-    // its only delivery trigger, so a no-op would mark it DISPATCHED while the
-    // customer is never contacted. Throwing dead-letters it (visible) instead.
+  it("does not silently no-op customer_success.outreach.send when sending is disabled", async () => {
+    // With CS_OUTREACH_SENDING_ENABLED unset (default), the handler throws so the
+    // event dead-letters / is replayable rather than being marked DISPATCHED while
+    // the customer is never contacted. (Delivery itself is covered in
+    // outreach-delivery.test.ts.)
+    delete process.env.CS_OUTREACH_SENDING_ENABLED;
     await expect(
       dispatchOutboxEvent(
         makeEvent({
           eventType: "customer_success.outreach.send",
           aggregateType: "customer_success_outreach_message",
-          payload: { messageId: "msg-1", recipientAddress: "a@b.co", body: "hi" },
+          aggregateId: "msg-1",
         }),
       ),
-    ).rejects.toThrow(/no dispatcher implemented for customer_success\.outreach\.send/);
+    ).rejects.toThrow(/outreach sending is disabled/i);
     expect(mockSendSlackDirectMessage).not.toHaveBeenCalled();
     expect(mockSendSlackNotification).not.toHaveBeenCalled();
   });

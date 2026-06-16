@@ -456,6 +456,28 @@ export async function sendSlackDirectMessage(input: {
   };
 }
 
+/**
+ * Post a message to a specific Slack channel using a user's connected Slack
+ * token. Unlike sendSlackDirectMessage (which opens a DM with an internal app
+ * user), this targets an arbitrary channel id — e.g. customer-success outreach
+ * to a shared customer channel.
+ */
+export async function sendSlackChannelMessage(input: {
+  userId: string;
+  channelId: string;
+  text: string;
+  threadTs?: string | null;
+}): Promise<{ channelId: string; messageTs: string }> {
+  const token = await getSlackToken(input.userId);
+  const posted = await postSlackMessage({
+    token,
+    channelId: input.channelId,
+    text: input.text,
+    threadTs: input.threadTs,
+  });
+  return { channelId: posted.channel, messageTs: posted.ts };
+}
+
 // ---------------------------------------------------------------------------
 // Main notification sender
 // ---------------------------------------------------------------------------

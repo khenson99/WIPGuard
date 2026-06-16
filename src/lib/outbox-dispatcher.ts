@@ -1,5 +1,6 @@
 import type { OutboxEvent } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dispatchCustomerSuccessOutreach } from "@/lib/customer-success/outreach-delivery";
 import {
   sendSlackDirectMessage,
   sendSlackNotification,
@@ -90,23 +91,19 @@ export async function dispatchOutboxEvent(event: OutboxEvent): Promise<void> {
       await dispatchVisitorFunnelSlackAlert(event);
       return;
     case "customer_success.outreach.send":
-      // No delivery handler is implemented yet. The producer
-      // (sendCustomerSuccessOutreach) creates the message with status QUEUED and
-      // relies SOLELY on this event to deliver it, so a silent no-op here would
-      // mark the event DISPATCHED while the customer is never actually contacted
-      // — a lost write that looks successful. Fail loudly so it surfaces in the
-      // dead-letter queue (/api/events/dead-letter) instead. Implement real
-      // delivery (email/Slack per `channel`) before relying on this path.
-      throw new Error(
-        "no dispatcher implemented for customer_success.outreach.send: outreach is recorded QUEUED but never delivered"
-      );
+      // Delivers the queued outreach (email/Slack per channel) and flips the
+      // message to SENT. Gated behind CS_OUTREACH_SENDING_ENABLED (default OFF),
+      // in which case it throws so the event dead-letters and is replayable
+      // rather than being silently marked DISPATCHED while never sent.
+      await dispatchCustomerSuccessOutreach(event);
+      return;
     default:
       // Domain events recorded for the event log / replay only — no active side
       // effect to dispatch. IMPORTANT: any event that requires delivery (a
       // notification, an outbound message, a webhook) MUST get an explicit
       // `case` above. Otherwise it silently no-ops here and is marked DISPATCHED
-      // without ever running. For known-deliverable types prefer throwing (see
-      // customer_success.outreach.send above) so the gap is visible.
+      // without ever running — add a handler (see the cases above) so a
+      // deliverable event never falls through to this no-op unnoticed.
       return;
   }
 }
