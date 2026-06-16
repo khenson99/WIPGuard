@@ -141,7 +141,7 @@ describe("PoolMonitor", () => {
     expect(health.status).toBe("critical");
   });
 
-  it("should return critical status when exhaustion events have occurred", () => {
+  it("should return critical status when exhaustion events occurred recently", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
     PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
@@ -149,6 +149,28 @@ describe("PoolMonitor", () => {
 
     const health = PoolMonitorModule.poolMonitor.getHealthStatus();
     expect(health.status).toBe("critical");
+  });
+
+  it("should recover from critical once an exhaustion event ages out", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.useFakeTimers();
+    try {
+      PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
+      PoolMonitorModule.poolMonitor.recordWaitTime(6000); // triggers exhaustion
+
+      expect(PoolMonitorModule.poolMonitor.getHealthStatus().status).toBe(
+        "critical"
+      );
+
+      // Past the recency window the latch releases, while the cumulative
+      // counter stays visible for observability.
+      vi.advanceTimersByTime(61_000);
+      const health = PoolMonitorModule.poolMonitor.getHealthStatus();
+      expect(health.status).toBe("healthy");
+      expect(health.pool.totalPoolExhaustionEvents).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("should track uptime", async () => {
