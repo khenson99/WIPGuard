@@ -175,6 +175,125 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
+// Returns `sql` with line (`--`) and block (`/* */`) comments removed, while
+// preserving string literals and dollar-quoted bodies verbatim. Mirrors the
+// state machine in splitSqlStatements so keyword detection (e.g. CONCURRENTLY)
+// ignores commentary. Newlines from line comments are preserved.
+function stripSqlComments(sql) {
+  let out = "";
+  let index = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let dollarTag = null;
+
+  while (index < sql.length) {
+    const current = sql[index];
+    const next = sql[index + 1];
+
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, index)) {
+        out += dollarTag;
+        index += dollarTag.length;
+        dollarTag = null;
+        continue;
+      }
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (inLineComment) {
+      if (current === "\n") {
+        inLineComment = false;
+        out += current;
+      }
+      index++;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (current === "*" && next === "/") {
+        inBlockComment = false;
+        index += 2;
+        continue;
+      }
+      index++;
+      continue;
+    }
+
+    if (inSingleQuote) {
+      out += current;
+      if (current === "'" && next === "'") {
+        out += next;
+        index += 2;
+        continue;
+      }
+      if (current === "'") {
+        inSingleQuote = false;
+      }
+      index++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      out += current;
+      if (current === '"' && next === '"') {
+        out += next;
+        index += 2;
+        continue;
+      }
+      if (current === '"') {
+        inDoubleQuote = false;
+      }
+      index++;
+      continue;
+    }
+
+    if (current === "-" && next === "-") {
+      inLineComment = true;
+      index += 2;
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      inBlockComment = true;
+      index += 2;
+      continue;
+    }
+
+    if (current === "'") {
+      inSingleQuote = true;
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (current === '"') {
+      inDoubleQuote = true;
+      out += current;
+      index++;
+      continue;
+    }
+
+    if (current === "$") {
+      const match = sql.slice(index).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/);
+      if (match) {
+        dollarTag = match[0];
+        out += dollarTag;
+        index += dollarTag.length;
+        continue;
+      }
+    }
+
+    out += current;
+    index++;
+  }
+
+  return out;
+}
+
 function stripLeadingSqlComments(statement) {
   let remaining = statement.trimStart();
 
@@ -380,7 +499,12 @@ async function run() {
 
       const sqlFile = path.join(MIGRATIONS_DIR, dir, "migration.sql");
       const sql = fs.readFileSync(sqlFile, "utf-8");
-      if (/\bCONCURRENTLY\b/i.test(sql)) {
+      // Detect CONCURRENTLY in executable SQL only — never in comments. A bare
+      // substring check over the whole file tripped on migrations that merely
+      // *mention* CONCURRENTLY in a comment (e.g. documenting an optional
+      // manual pre-create), refusing a valid transactional migration and
+      // failing every deploy at boot. Strip comments before testing.
+      if (/\bCONCURRENTLY\b/i.test(stripSqlComments(sql))) {
         console.error(
           `Migration ${dir} contains CONCURRENTLY; refusing to run outside a transaction`,
         );
@@ -461,4 +585,5 @@ module.exports = {
   listMigrationDirs,
   splitMigrationSql,
   splitSqlStatements,
+  stripSqlComments,
 };
