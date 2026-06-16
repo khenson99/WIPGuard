@@ -3,16 +3,41 @@
 Context: on 2026-06-10 the production Postgres volume filled at ~10GB, Postgres
 crash-looped in WAL recovery on "No space left on device", and every DB-backed
 feature (including Google sign-in) went down. The volume was grown to 20GB, but
-nothing bounded table growth. This runbook documents what grows, the retention
-policy that bounds it, and how to operate the pruning job.
+nothing bounded table growth.
+
+## Relationship to `docs/db-growth-controls.md`
+
+This job is **complementary** to the controls in
+[`docs/db-growth-controls.md`](db-growth-controls.md), and the two delete
+**disjoint** sets of tables — there is no overlap in what gets removed:
+
+- **db-growth-controls (runs inside the sync cycle)** bounds the tables that
+  grew without bound and caused the outage: `ImladrisMetricLineage` (8.1 GB /
+  91% of the DB at the outage — superseded lineage generations) via a 14-day
+  TTL + per-source write cap, plus `ImladrisCanonicalMetricValue` thinning and
+  `OutboxEvent` retention.
+- **This job (a standalone daily cron)** bounds the *other* append-only tables
+  — `ImladrisRawSourceRecord`, `ImladrisSourceSyncRun`, `MetricHistory`,
+  `SecurityAuditEvent`, `AnalyticsSnapshot` — and adds the size/WAL visibility
+  endpoint (`/api/health/db`) that neither system had before.
+
+Two deliberate design choices follow from the outage: (1) this job is
+**decoupled from the sync cycle**, so retention keeps running even when sync is
+failing (the failure mode that let the original table grow unnoticed); and
+(2) there is a **synergy with the lineage TTL** — once db-growth-controls ages
+out superseded lineage, the old `ImladrisRawSourceRecord` rows that lineage
+used to reference fall outside the 13-month window with no remaining lineage,
+so this job can finally reclaim them.
 
 ## What consumes space (write-path analysis)
 
-No table in the schema had a delete path except `AnalyticsSnapshot` (whose
-pruner only runs as a side effect of the `/api/cron/sync` analytics sync — so
-pruning stops exactly when sync starts failing, e.g. while the DB is degraded).
-The cron sync fires every 10 minutes (`railway/cron-sync`, `*/10 * * * *`),
-which sets the write rates below.
+The tables below are the ones this job manages. (`ImladrisMetricLineage`,
+`ImladrisCanonicalMetricValue`, and `OutboxEvent` — the dominant growers — are
+handled by db-growth-controls, not here.) Before this work, the only delete
+path among these was `AnalyticsSnapshot` (whose pruner only runs as a side
+effect of the `/api/cron/sync` analytics sync — so pruning stops exactly when
+sync starts failing). The cron sync fires every 10 minutes
+(`railway/cron-sync`, `*/10 * * * *`), which sets the write rates below.
 
 | Table | Write path | Growth shape | Heavy columns |
 | --- | --- | --- | --- |
@@ -22,10 +47,11 @@ which sets the write rates below.
 | `AnalyticsSnapshot` | per provider/preset/sync; new row per `toDate` | bounded at 30d **only while sync succeeds** | `payload Json` |
 | `SecurityAuditEvent` | every auth/permission decision (`src/lib/security-audit.ts`) | proportional to traffic; reads cap at the latest 200 | `details Json`, `userAgent` |
 
-Other append-only tables exist (`OutboxEvent`, `WorkflowTriggerEvent`,
-`FunnelEvent`, `IntegrationReceipt`, `SubmissionEvent`) with no sweeper. They
-are lower-rate by code path; watch their real sizes via `/api/health/db` and
-extend the policy if they show up in the top tables.
+`OutboxEvent` is handled by db-growth-controls. Other append-only tables
+(`WorkflowTriggerEvent`, `FunnelEvent`, `IntegrationReceipt`,
+`SubmissionEvent`) still have no sweeper; they are lower-rate by code path —
+watch their real sizes via `/api/health/db` and extend the policy if they show
+up in the top tables.
 
 To verify sizes against the live database (read-only):
 
