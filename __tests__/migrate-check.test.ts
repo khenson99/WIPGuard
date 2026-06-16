@@ -15,6 +15,7 @@ const migrate = require("../migrate.cjs") as {
   listMigrationDirs: () => string[];
   migrationContainsConcurrently: (dir: string) => boolean;
   sqlUsesConcurrently: (sql: string) => boolean;
+  stripCommentsAndQuotedText: (sql: string) => string;
 };
 
 const MIGRATIONS_DIR = join(__dirname, "..", "prisma", "migrations");
@@ -108,5 +109,54 @@ describe("migrate.cjs CONCURRENTLY detection (deferred migrations)", () => {
 
   it("returns false for a non-existent migration dir", () => {
     expect(migrate.migrationContainsConcurrently("does_not_exist")).toBe(false);
+  });
+
+  // Hardening: comment-only stripping (two regexes) still false-flags
+  // CONCURRENTLY that appears inside quoted SQL — which would *defer* an
+  // otherwise transaction-safe migration (silently skipped at deploy, schema
+  // drift until applied out-of-band). Detection must treat CONCURRENTLY as a
+  // bare keyword only.
+  it("does NOT flag CONCURRENTLY inside a string literal", () => {
+    expect(
+      migrate.sqlUsesConcurrently(
+        "INSERT INTO audit_note(body) VALUES ('rebuild this index CONCURRENTLY next week');"
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT flag CONCURRENTLY inside a quoted identifier", () => {
+    expect(
+      migrate.sqlUsesConcurrently('CREATE INDEX "build me CONCURRENTLY" ON "T"("c");')
+    ).toBe(false);
+  });
+
+  it("does NOT flag CONCURRENTLY inside a dollar-quoted body", () => {
+    expect(
+      migrate.sqlUsesConcurrently("DO $$ BEGIN PERFORM 'CONCURRENTLY'; END $$;")
+    ).toBe(false);
+  });
+
+  it("does not treat a -- sequence inside a string as a comment", () => {
+    // The regex `--[^\n]*` would have eaten the rest of this line; the real
+    // CONCURRENTLY DDL on the next line must still be detected.
+    expect(
+      migrate.sqlUsesConcurrently(
+        "INSERT INTO t(note) VALUES ('see ticket -- WIP');\n" +
+          "CREATE INDEX CONCURRENTLY i ON t(c);"
+      )
+    ).toBe(true);
+  });
+
+  it("still detects DROP/REINDEX ... CONCURRENTLY", () => {
+    expect(migrate.sqlUsesConcurrently("DROP INDEX CONCURRENTLY bar;")).toBe(true);
+    expect(migrate.sqlUsesConcurrently("REINDEX INDEX CONCURRENTLY foo;")).toBe(true);
+  });
+
+  it("stripCommentsAndQuotedText removes comments and quoted contents but not bare code", () => {
+    const out = migrate.stripCommentsAndQuotedText(
+      "CREATE INDEX CONCURRENTLY i ON t(c); -- 'x' /* y */"
+    );
+    expect(out).toMatch(/CREATE INDEX CONCURRENTLY i ON t\(c\);/);
+    expect(out).not.toMatch(/x|y/);
   });
 });
