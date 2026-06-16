@@ -148,6 +148,20 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
     );
   }
 
+  // Growth-control pruning failures (see src/lib/sync/analytics.ts). These
+  // must stay loud: an unnoticed retention failure is how ImladrisMetricLineage
+  // filled the database volume on 2026-06-10.
+  for (const [field, label] of [
+    ["lineagePruning", "lineage_pruning"],
+    ["metricValuePruning", "metric_value_pruning"],
+    ["outboxPruning", "outbox_pruning"],
+  ] as const) {
+    const outcome = asRecord(record[field]);
+    if (typeof outcome?.error === "string" && outcome.error.trim().length > 0) {
+      failures.push(`${label}: ${outcome.error}`);
+    }
+  }
+
   return failures;
 }
 
@@ -387,13 +401,22 @@ async function executeCronSync(input: {
       health: null as unknown,
       pruning: null as unknown,
       retention: null as unknown,
+      lineagePruning: null as unknown,
+      metricValuePruning: null as unknown,
+      outboxPruning: null as unknown,
     };
 
     if (analyticsSyncResult.status === "fulfilled") {
       // Split bundled result back into `analytics` (refresh) and `pruning`
       // top-level fields — external monitors read these separately.
+      // `lineagePruning`/`outboxPruning` are the growth controls for the
+      // tables behind the 2026-06-10 disk-full outage (`retention` was
+      // already taken by customer-retention materialization).
       settled.analytics = analyticsSyncResult.value.refresh;
       settled.pruning = analyticsSyncResult.value.pruning;
+      settled.lineagePruning = analyticsSyncResult.value.lineagePruning;
+      settled.metricValuePruning = analyticsSyncResult.value.metricValuePruning;
+      settled.outboxPruning = analyticsSyncResult.value.outboxPruning;
       failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {
       const msg = analyticsSyncResult.reason instanceof Error ? analyticsSyncResult.reason.message : String(analyticsSyncResult.reason);
