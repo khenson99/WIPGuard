@@ -11,14 +11,11 @@ import type {
 } from "@/lib/analytics/types";
 import { CANONICAL_STAGE_ORDER } from "@/lib/analytics/customer-journey-conversion";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { normalizeStageKey } from "@/lib/analytics/stage-key";
 
 const CANONICAL_STAGE_BY_KEY = new Map(
   CANONICAL_STAGE_ORDER.map((stage) => [normalizeStageKey(stage), stage]),
 );
-
-function normalizeStageKey(stage: string): string {
-  return stage.trim().toLowerCase().replace(/[\s_-]+/g, "");
-}
 
 function normalizeStage(stage: string | null | undefined): string {
   const trimmed = stage?.trim() ?? "";

@@ -548,7 +548,11 @@ export async function sendSlackNotification(input: {
       idempotencyKey: buildOutboxIdempotencyKey({
         aggregateType: "operating_alert",
         aggregateId: input.payload.alertId,
-        eventType: `slack_notification_${input.payload.type}_${now}`,
+        // Key on the delivered Slack message timestamp (stable identity of the
+        // actual post), NOT Date.now() — embedding the wall clock made every
+        // enqueue unique, permanently defeating the outbox dedup upsert and
+        // bloating OutboxEvent (a driver of the 2026-06 volume-fill incident).
+        eventType: `slack_notification_${input.payload.type}_${posted.ts}`,
       }),
     });
 

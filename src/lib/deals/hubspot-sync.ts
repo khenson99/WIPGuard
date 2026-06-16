@@ -238,6 +238,11 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
   }
 
   // 5. Upsert deals (with company + contact associations)
+  // Track HubSpot deal id -> local deal id as we go, so the meetings loop below
+  // can resolve its deal association from memory instead of a per-meeting
+  // `deal.findUnique` round-trip (it falls back to the DB only for the rare
+  // association to a deal outside this run's batch).
+  const hsDealIdToLocal = new Map<string, string>();
   for (const hd of hsDeals) {
     const pipelineId = hd.properties.pipeline?.trim() || null;
     if (pipelineId && pipelineId !== HUBSPOT_MAIN_PIPELINE_ID) continue;
@@ -302,6 +307,8 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
       },
     });
 
+    hsDealIdToLocal.set(hd.id, deal.id);
+
     // Record stage history if stage changed or is new
     if (!existing) {
       await prisma.dealStageHistory.create({
@@ -343,9 +350,13 @@ export async function syncDealsFromHubSpot(userId: string): Promise<SyncResult> 
       fetchAssociations(accessToken, "meetings", hm.id, "companies"),
     ]);
 
-    // Resolve to local IDs — for deal, find the first one we've synced
+    // Resolve to local IDs — for deal, find the first one we've synced.
+    // Deals synced earlier in this run are already in hsDealIdToLocal; fall back
+    // to a DB lookup only for the rare association to a deal outside this batch.
     let localDealId: string | null = null;
     for (const did of meetingDealIds) {
+      const known = hsDealIdToLocal.get(did);
+      if (known) { localDealId = known; break; }
       const deal = await prisma.deal.findUnique({ where: { hubspotDealId: did }, select: { id: true } });
       if (deal) { localDealId = deal.id; break; }
     }

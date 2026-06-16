@@ -46,24 +46,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const organizationId = getOptionalOrganizationId(session);
     const organizationFilter = organizationId ? { organizationId } : {};
 
+    // Project only the columns each aggregation actually reads. These loads are
+    // org-scoped but not row-capped, so trimming the per-row width keeps unused
+    // (and potentially large) columns out of the request heap — the same lesson
+    // as the snapshot-payload trimming after the 2026-06 OOM incidents.
     const [allDeals, allMeetings, allHistory] = await Promise.all([
       prisma.deal.findMany({
         where: organizationFilter,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          stage: true,
+          amount: true,
+          source: true,
+          closedAt: true,
+          updatedAt: true,
           company: { select: { id: true, name: true } },
           meetings: { select: { startAt: true }, orderBy: { startAt: "desc" }, take: 1 },
         },
       }),
       prisma.dealMeeting.findMany({
-        where: {
-          deal: organizationFilter,
+        where: { deal: organizationFilter },
+        select: {
+          status: true,
+          startAt: true,
+          expectedAttendees: true,
+          actualAttendees: true,
         },
       }),
       prisma.dealStageHistory.findMany({
-        where: {
-          deal: organizationFilter,
-        },
+        where: { deal: organizationFilter },
         orderBy: { changedAt: "asc" },
+        select: { dealId: true, fromStage: true, toStage: true, changedAt: true },
       }),
     ]);
 

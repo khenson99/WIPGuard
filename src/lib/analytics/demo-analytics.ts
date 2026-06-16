@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getRequiredOrganizationId } from "@/lib/request-context";
+import { normalizeStageKey } from "@/lib/analytics/stage-key";
 import type {
   AnalyticsDashboardData,
   DemoAnalysisStatus,
@@ -101,10 +102,6 @@ export interface DemoMeetingContext {
 
 function normalizeKey(value: string | null | undefined): string {
   return value?.trim().toLowerCase() ?? "";
-}
-
-function normalizeStageKey(value: string | null | undefined): string {
-  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
 }
 
 function normalizeStageLabel(value: string | null | undefined): string {

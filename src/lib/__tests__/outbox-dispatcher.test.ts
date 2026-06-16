@@ -143,4 +143,21 @@ describe("outbox-dispatcher", () => {
     expect(mockSendSlackDirectMessage).not.toHaveBeenCalled();
     expect(mockSendSlackNotification).not.toHaveBeenCalled();
   });
+
+  it("fails loudly for customer_success.outreach.send (no delivery handler yet)", async () => {
+    // Must NOT silently no-op: the message is recorded QUEUED and this event is
+    // its only delivery trigger, so a no-op would mark it DISPATCHED while the
+    // customer is never contacted. Throwing dead-letters it (visible) instead.
+    await expect(
+      dispatchOutboxEvent(
+        makeEvent({
+          eventType: "customer_success.outreach.send",
+          aggregateType: "customer_success_outreach_message",
+          payload: { messageId: "msg-1", recipientAddress: "a@b.co", body: "hi" },
+        }),
+      ),
+    ).rejects.toThrow(/no dispatcher implemented for customer_success\.outreach\.send/);
+    expect(mockSendSlackDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendSlackNotification).not.toHaveBeenCalled();
+  });
 });

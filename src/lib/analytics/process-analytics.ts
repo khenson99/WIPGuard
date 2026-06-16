@@ -9,6 +9,7 @@ import type {
   WeeklyThroughput,
 } from "@/lib/analytics/types";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { normalizeStageKey as normalizeStageLabelKey } from "@/lib/analytics/stage-key";
 
 const PIPELINE_STAGES = [
   "Prospect", "Lead", "Demo Scheduled", "No-Show/Reschedule",
@@ -21,10 +22,6 @@ const LEAKAGE_STAGES = ["Closed Lost", "Unlikely", "Churn", "No-Show/Reschedule"
 const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
   [...PIPELINE_STAGES, ...TERMINAL_STAGES, ...LEAKAGE_STAGES].map((label) => [normalizeStageLabelKey(label), label])
 );
-
-function normalizeStageLabelKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
-}
 
 function normalizeStageLabel(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? "";

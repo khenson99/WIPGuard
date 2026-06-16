@@ -13,6 +13,7 @@ import type {
 } from "@/lib/analytics/types";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
+import { normalizeStageKey } from "@/lib/analytics/stage-key";
 
 const SALES_STAGE_ORDER = [
   "Prospect",
@@ -52,10 +53,6 @@ function toTrendDelta(current: number, previous: number): number | null {
 
 function normalizeConfidence(value: number): number {
   return Math.max(0.2, Math.min(0.98, Math.round(value * 100) / 100));
-}
-
-function normalizeStageKey(value: string | null | undefined): string {
-  return value?.trim().toLowerCase().replace(/[\s_-]+/g, "") ?? "";
 }
 
 function withShares(

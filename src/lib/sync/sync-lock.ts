@@ -14,7 +14,7 @@
  * cannot run overlapping cycles either.
  */
 import type { Pool } from "pg";
-import { getConnectionPool } from "@/lib/prisma";
+import { withAdvisoryLock, type AdvisoryLockOutcome } from "@/lib/advisory-lock";
 
 // Postgres session-level advisory lock keys. Distinct from the migration lock
 // in migrate.cjs (WIPG/MIGR); this one is keyed (WIPG, SYNC). Both halves must
@@ -22,57 +22,23 @@ import { getConnectionPool } from "@/lib/prisma";
 const SYNC_LOCK_KEY_1 = 0x57495047; // "WIPG"
 const SYNC_LOCK_KEY_2 = 0x53594e43; // "SYNC"
 
-export type SyncLockOutcome<T> =
-  | { ran: true; result: T }
-  | { ran: false; reason: string };
+export const SYNC_LOCK_KEYS = {
+  key1: SYNC_LOCK_KEY_1,
+  key2: SYNC_LOCK_KEY_2,
+} as const;
+
+export type SyncLockOutcome<T> = AdvisoryLockOutcome<T>;
 
 /**
  * Run `fn` while holding the global sync advisory lock. If the lock is already
  * held by another cycle, `fn` is NOT run and `{ ran: false }` is returned.
- *
- * Uses `pg_try_advisory_lock` (non-blocking) on a single pinned pool
- * connection; the matching `pg_advisory_unlock` runs on the SAME connection in
- * a `finally`, before the connection is released back to the pool.
  */
 export async function withSyncAdvisoryLock<T>(
   fn: () => Promise<T>,
   options: { pool?: Pool } = {}
 ): Promise<SyncLockOutcome<T>> {
-  const pool = options.pool ?? getConnectionPool();
-  const client = await pool.connect();
-  try {
-    const locked = await client.query<{ locked: boolean }>(
-      "SELECT pg_try_advisory_lock($1, $2) AS locked",
-      [SYNC_LOCK_KEY_1, SYNC_LOCK_KEY_2]
-    );
-    if (!locked.rows[0]?.locked) {
-      return { ran: false, reason: "another sync cycle is already running" };
-    }
-    try {
-      const result = await fn();
-      return { ran: true, result };
-    } finally {
-      // Best-effort unlock on the same backend connection. If this throws
-      // (e.g. connection died mid-cycle), the advisory lock is released
-      // automatically when the session ends, so we never leak it permanently.
-      try {
-        await client.query("SELECT pg_advisory_unlock($1, $2)", [
-          SYNC_LOCK_KEY_1,
-          SYNC_LOCK_KEY_2,
-        ]);
-      } catch (error) {
-        console.warn(
-          "[sync-lock] advisory unlock failed (lock will clear on session end):",
-          error instanceof Error ? error.message : String(error)
-        );
-      }
-    }
-  } finally {
-    client.release();
-  }
+  return withAdvisoryLock(SYNC_LOCK_KEYS, fn, {
+    pool: options.pool,
+    busyReason: "another sync cycle is already running",
+  });
 }
-
-export const SYNC_LOCK_KEYS = {
-  key1: SYNC_LOCK_KEY_1,
-  key2: SYNC_LOCK_KEY_2,
-} as const;

@@ -7,6 +7,7 @@ import {
 } from "@/lib/analytics/prisma-funnel-enums";
 import { type Prisma } from "@/generated/prisma/client";
 import { enrichStripeEmails } from "@/lib/analytics/stripe-email-enrichment";
+import { normalizeStageKey } from "@/lib/analytics/stage-key";
 import { buildVisitorFunnelEnrichmentAlerts } from "@/lib/analytics/visitor-funnel-enrichment-alerts";
 import type {
   VisitorFunnelPrismaClient,
@@ -184,10 +185,6 @@ export interface VisitorRecordsPage {
 function trimOrNull(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeStageKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeDemoStage(value: string | null | undefined): string {

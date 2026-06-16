@@ -89,8 +89,24 @@ export async function dispatchOutboxEvent(event: OutboxEvent): Promise<void> {
     case "visitor_funnel.enrichment.slack_alert":
       await dispatchVisitorFunnelSlackAlert(event);
       return;
+    case "customer_success.outreach.send":
+      // No delivery handler is implemented yet. The producer
+      // (sendCustomerSuccessOutreach) creates the message with status QUEUED and
+      // relies SOLELY on this event to deliver it, so a silent no-op here would
+      // mark the event DISPATCHED while the customer is never actually contacted
+      // — a lost write that looks successful. Fail loudly so it surfaces in the
+      // dead-letter queue (/api/events/dead-letter) instead. Implement real
+      // delivery (email/Slack per `channel`) before relying on this path.
+      throw new Error(
+        "no dispatcher implemented for customer_success.outreach.send: outreach is recorded QUEUED but never delivered"
+      );
     default:
-      // No-op for events that are recorded for telemetry only.
+      // Domain events recorded for the event log / replay only — no active side
+      // effect to dispatch. IMPORTANT: any event that requires delivery (a
+      // notification, an outbound message, a webhook) MUST get an explicit
+      // `case` above. Otherwise it silently no-ops here and is marked DISPATCHED
+      // without ever running. For known-deliverable types prefer throwing (see
+      // customer_success.outreach.send above) so the gap is visible.
       return;
   }
 }

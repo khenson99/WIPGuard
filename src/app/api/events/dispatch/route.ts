@@ -5,6 +5,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { dispatchOutboxBatch } from "@/lib/outbox-worker";
 import { dispatchOutboxEvent } from "@/lib/outbox-dispatcher";
+import { withAdvisoryLock } from "@/lib/advisory-lock";
+
+// Distinct from the sync lock (WIPG, SYNC) — this is (WIPG, OBOX). Serializes
+// outbox dispatch across replicas / external cron / manual admin triggers so
+// two runners can't both pull the same PENDING rows and deliver them twice
+// (e.g. duplicate Slack messages). Both halves fit in a signed int32.
+const OUTBOX_DISPATCH_LOCK_KEYS = { key1: 0x57495047, key2: 0x4f424f58 } as const;
 
 function normalizePositiveInt(value: unknown, fallback?: number): number | undefined {
   if (value === undefined || value === null) {
@@ -44,13 +51,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       normalizePositiveInt(body.maxRetries, undefined) ??
       normalizePositiveInt(request.nextUrl.searchParams.get("maxRetries"), undefined);
 
-    const result = await dispatchOutboxBatch(prisma, dispatchOutboxEvent, {
-      batchSize,
-      maxRetries,
-    });
+    const outcome = await withAdvisoryLock(
+      OUTBOX_DISPATCH_LOCK_KEYS,
+      () =>
+        dispatchOutboxBatch(prisma, dispatchOutboxEvent, {
+          batchSize,
+          maxRetries,
+        }),
+      { busyReason: "another outbox dispatch is already running" }
+    );
+
+    if (!outcome.ran) {
+      // Concurrent dispatch already in flight — skip rather than double-deliver.
+      return NextResponse.json({
+        skipped: true,
+        reason: outcome.reason,
+        dispatchedAt: new Date().toISOString(),
+      });
+    }
 
     return NextResponse.json({
-      ...result,
+      ...outcome.result,
       dispatchedAt: new Date().toISOString(),
     });
   } catch (error) {

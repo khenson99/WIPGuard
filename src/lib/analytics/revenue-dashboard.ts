@@ -1,5 +1,6 @@
 import { buildSubscriptionMrrBreakdown } from "@/lib/analytics/subscription-mrr";
 import { normalizePercentValue } from "@/lib/analytics/percentage-utils";
+import { normalizeStageKey as normalizeStageLabelKey } from "@/lib/analytics/stage-key";
 import type {
   AnalyticsDashboardData,
   DealStage,
@@ -33,10 +34,6 @@ const CANONICAL_STAGE_LABEL_BY_KEY = new Map(
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-function normalizeStageLabelKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function normalizeStageLabel(value: string | null | undefined): string {
