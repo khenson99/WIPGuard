@@ -42,4 +42,12 @@ esac
 
 echo "Starting server..."
 export HOSTNAME=${HOSTNAME:-0.0.0.0}
-exec node server.js
+
+# --max-old-space-size: defense-in-depth heap headroom, NOT a leak fix. Sizes
+# the V8 old-space to the Railway container instead of V8's ~4 GB default, so
+# that if an analytics/lineage read regresses, the app degrades slowly rather
+# than crash-looping (the 2026-06 OOM was a hard 4 GB heap-limit fatal). Keep
+# below the container memory limit — leave ~2 GB for non-heap RSS. Override via
+# NODE_MAX_OLD_SPACE_MB. (No --expose-gc: nothing calls gc() in this codebase.)
+NODE_MAX_OLD_SPACE_MB="${NODE_MAX_OLD_SPACE_MB:-6144}"
+exec node --max-old-space-size="${NODE_MAX_OLD_SPACE_MB}" server.js
