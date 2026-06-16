@@ -29,6 +29,7 @@ export interface PoolMetrics {
   maxPoolSize: number;
   totalConnectionsCreated: number;
   totalConnectionErrors: number;
+  totalConnectRetries: number;
   totalPoolExhaustionEvents: number;
   avgConnectionWaitMs: number;
   lastError: string | null;
@@ -36,10 +37,21 @@ export interface PoolMetrics {
   uptimeMs: number;
 }
 
+/**
+ * How long after a pool-exhaustion event the health status stays "critical".
+ * Exhaustion used to latch critical forever, which meant a single slow query
+ * early in a container's life made /api/health report a false, permanent 503
+ * for the rest of that process — wrong for any monitor/alert consuming it.
+ * Recency-based instead, so the status tracks live conditions.
+ */
+const EXHAUSTION_CRITICAL_WINDOW_MS = 60_000;
+
 class PoolMonitor {
   private totalConnectionsCreated = 0;
   private totalConnectionErrors = 0;
+  private totalConnectRetries = 0;
   private totalPoolExhaustionEvents = 0;
+  private lastExhaustionAt: number | null = null;
   private connectionWaitTimes: number[] = [];
   private lastError: string | null = null;
   private lastErrorAt: string | null = null;
@@ -116,10 +128,21 @@ class PoolMonitor {
     // Detect pool exhaustion: if wait time exceeds 5 seconds
     if (waitMs > 5000) {
       this.totalPoolExhaustionEvents++;
+      this.lastExhaustionAt = Date.now();
       console.warn(
         `[PoolMonitor] Pool exhaustion detected! Wait time: ${waitMs}ms (event #${this.totalPoolExhaustionEvents})`
       );
     }
+  }
+
+  /**
+   * Record a retried transient connection-acquisition failure
+   * (see db-connect-retry.ts).
+   */
+  recordConnectRetry(error: Error): void {
+    this.totalConnectRetries++;
+    this.lastError = error.message;
+    this.lastErrorAt = new Date().toISOString();
   }
 
   /**
@@ -149,6 +172,7 @@ class PoolMonitor {
       maxPoolSize: this.maxPoolSize,
       totalConnectionsCreated: this.totalConnectionsCreated,
       totalConnectionErrors: this.totalConnectionErrors,
+      totalConnectRetries: this.totalConnectRetries,
       totalPoolExhaustionEvents: this.totalPoolExhaustionEvents,
       avgConnectionWaitMs: Math.round(avgWait * 100) / 100,
       lastError: this.lastError,
@@ -176,7 +200,13 @@ class PoolMonitor {
       }
     }
 
-    if (metrics.totalPoolExhaustionEvents > 0) {
+    // Recent exhaustion marks the pool critical; older events stay visible in
+    // the cumulative counter but no longer latch the status (a latched 503
+    // would keep /api/health reporting failure long after one transient stall).
+    if (
+      this.lastExhaustionAt !== null &&
+      Date.now() - this.lastExhaustionAt < EXHAUSTION_CRITICAL_WINDOW_MS
+    ) {
       status = "critical";
     }
 
