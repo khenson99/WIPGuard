@@ -111,6 +111,7 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
     ['lineagePruning', 'lineage_pruning'],
     ['metricValuePruning', 'metric_value_pruning'],
     ['outboxPruning', 'outbox_pruning'],
+    ['rawSourceRecordPruning', 'raw_source_record_pruning'],
   ] as const) {
     const outcome = asRecord(record[field]);
     if (typeof outcome?.error === 'string' && outcome.error.trim().length > 0) {

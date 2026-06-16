@@ -4,6 +4,7 @@ import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { pruneOutboxEvents } from "@/lib/events/outbox-retention";
 import { pruneImladrisMetricLineage } from "@/lib/imladris/lineage-retention";
 import { pruneImladrisMetricValues } from "@/lib/imladris/metric-value-retention";
+import { pruneImladrisRawSourceRecords } from "@/lib/imladris/raw-source-retention";
 import { materializeImladrisCanonicalMetrics } from "@/lib/imladris/materialization";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
@@ -26,6 +27,10 @@ vi.mock("@/lib/imladris/lineage-retention", () => ({
 
 vi.mock("@/lib/imladris/metric-value-retention", () => ({
   pruneImladrisMetricValues: vi.fn(),
+}));
+
+vi.mock("@/lib/imladris/raw-source-retention", () => ({
+  pruneImladrisRawSourceRecords: vi.fn(),
 }));
 
 vi.mock("@/lib/imladris/materialization", () => ({
@@ -78,6 +83,13 @@ describe("runAnalyticsSync", () => {
       batches: 0,
       dispatchedCutoff: "2026-05-18T12:00:00.000Z",
       deadLetterCutoff: "2026-05-02T12:00:00.000Z",
+      completed: true,
+      durationMs: 1,
+    } as never);
+    vi.mocked(pruneImladrisRawSourceRecords).mockResolvedValue({
+      deletedRows: 0,
+      batches: 0,
+      cutoff: "2025-06-01T12:00:00.000Z",
       completed: true,
       durationMs: 1,
     } as never);
@@ -398,9 +410,17 @@ describe("runAnalyticsSync", () => {
       completed: false,
       durationMs: 3,
     };
+    const rawSourceResult = {
+      deletedRows: 9000,
+      batches: 1,
+      cutoff: "2025-06-01T12:00:00.000Z",
+      completed: false,
+      durationMs: 4,
+    };
     vi.mocked(pruneImladrisMetricLineage).mockResolvedValueOnce(lineageResult as never);
     vi.mocked(pruneImladrisMetricValues).mockResolvedValueOnce(metricValueResult as never);
     vi.mocked(pruneOutboxEvents).mockResolvedValueOnce(outboxResult as never);
+    vi.mocked(pruneImladrisRawSourceRecords).mockResolvedValueOnce(rawSourceResult as never);
 
     const result = await runAnalyticsSync({
       prisma: prisma as never,
@@ -409,6 +429,7 @@ describe("runAnalyticsSync", () => {
     expect(result.lineagePruning).toEqual(lineageResult);
     expect(result.metricValuePruning).toEqual(metricValueResult);
     expect(result.outboxPruning).toEqual(outboxResult);
+    expect(result.rawSourceRecordPruning).toEqual(rawSourceResult);
     expect(pruneImladrisMetricLineage).toHaveBeenCalledWith({
       prisma,
       now: new Date("2026-06-01T12:00:00.000Z"),
@@ -421,18 +442,26 @@ describe("runAnalyticsSync", () => {
       prisma,
       now: new Date("2026-06-01T12:00:00.000Z"),
     });
+    expect(pruneImladrisRawSourceRecords).toHaveBeenCalledWith({
+      prisma,
+      now: new Date("2026-06-01T12:00:00.000Z"),
+    });
 
     // Pruning must run after materialization so it never contends with the
     // cycle's own lineage writes, and metric value thinning must run after
-    // lineage pruning (it only deletes lineage-free rows).
+    // lineage pruning (it only deletes lineage-free rows). Raw source pruning
+    // also runs after lineage pruning — it only deletes raw records whose
+    // lineage has already been aged out (the NOT EXISTS guard).
     const lastMaterializeOrder = vi
       .mocked(materializeImladrisCanonicalMetrics)
       .mock.invocationCallOrder.at(-1);
     const lineageOrder = vi.mocked(pruneImladrisMetricLineage).mock.invocationCallOrder[0];
     const metricValueOrder = vi.mocked(pruneImladrisMetricValues).mock.invocationCallOrder[0];
+    const rawSourceOrder = vi.mocked(pruneImladrisRawSourceRecords).mock.invocationCallOrder[0];
     expect(lastMaterializeOrder).toBeDefined();
     expect(lineageOrder).toBeGreaterThan(lastMaterializeOrder as number);
     expect(metricValueOrder).toBeGreaterThan(lineageOrder);
+    expect(rawSourceOrder).toBeGreaterThan(lineageOrder);
   });
 
   it("captures growth-control pruning failures without failing the sync", async () => {
@@ -445,6 +474,9 @@ describe("runAnalyticsSync", () => {
       new Error("metric value prune exploded"),
     );
     vi.mocked(pruneOutboxEvents).mockRejectedValueOnce(new Error("outbox prune exploded"));
+    vi.mocked(pruneImladrisRawSourceRecords).mockRejectedValueOnce(
+      new Error("raw source prune exploded"),
+    );
 
     const result = await runAnalyticsSync({
       prisma: prisma as never,
@@ -453,6 +485,7 @@ describe("runAnalyticsSync", () => {
     expect(result.lineagePruning).toEqual({ error: "lineage prune exploded" });
     expect(result.metricValuePruning).toEqual({ error: "metric value prune exploded" });
     expect(result.outboxPruning).toEqual({ error: "outbox prune exploded" });
+    expect(result.rawSourceRecordPruning).toEqual({ error: "raw source prune exploded" });
     // The sync itself still succeeds end-to-end.
     expect(result.refresh).toEqual({ refreshed: true });
     expect(result.imladris).toHaveLength(2);
@@ -464,6 +497,9 @@ describe("runAnalyticsSync", () => {
     });
     expect(consoleError).toHaveBeenCalledWith("analytics_sync.outbox_pruning_failed", {
       error: "outbox prune exploded",
+    });
+    expect(consoleError).toHaveBeenCalledWith("analytics_sync.raw_source_record_pruning_failed", {
+      error: "raw source prune exploded",
     });
     consoleError.mockRestore();
   });

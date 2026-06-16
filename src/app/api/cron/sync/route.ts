@@ -155,6 +155,7 @@ function collectAnalyticsPartialFailures(value: unknown): string[] {
     ["lineagePruning", "lineage_pruning"],
     ["metricValuePruning", "metric_value_pruning"],
     ["outboxPruning", "outbox_pruning"],
+    ["rawSourceRecordPruning", "raw_source_record_pruning"],
   ] as const) {
     const outcome = asRecord(record[field]);
     if (typeof outcome?.error === "string" && outcome.error.trim().length > 0) {
@@ -404,6 +405,7 @@ async function executeCronSync(input: {
       lineagePruning: null as unknown,
       metricValuePruning: null as unknown,
       outboxPruning: null as unknown,
+      rawSourceRecordPruning: null as unknown,
     };
 
     if (analyticsSyncResult.status === "fulfilled") {
@@ -417,6 +419,7 @@ async function executeCronSync(input: {
       settled.lineagePruning = analyticsSyncResult.value.lineagePruning;
       settled.metricValuePruning = analyticsSyncResult.value.metricValuePruning;
       settled.outboxPruning = analyticsSyncResult.value.outboxPruning;
+      settled.rawSourceRecordPruning = analyticsSyncResult.value.rawSourceRecordPruning;
       failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {
       const msg = analyticsSyncResult.reason instanceof Error ? analyticsSyncResult.reason.message : String(analyticsSyncResult.reason);

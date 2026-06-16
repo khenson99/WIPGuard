@@ -1,0 +1,12 @@
+-- Index that drives the ImladrisRawSourceRecord retention prune scan
+-- (updatedAt < cutoff) in src/lib/imladris/raw-source-retention.ts.
+--
+-- IF NOT EXISTS is intentional. On the large production table this index should
+-- be pre-built WITHOUT an exclusive lock BEFORE this migration runs, because the
+-- deploy runner (migrate.cjs) applies every migration inside a transaction and
+-- an in-transaction CREATE INDEX holds an ACCESS EXCLUSIVE lock for the whole
+-- build. Pre-build it with the companion ops script, after which this statement
+-- no-ops; on fresh/small databases it simply builds the index directly:
+--   scripts/ops/20260615120000_imladris_raw_source_record_updatedat_index.lockfree.sql
+-- See docs/db-growth-controls.md ("schema migration").
+CREATE INDEX IF NOT EXISTS "ImladrisRawSourceRecord_updatedAt_idx" ON "ImladrisRawSourceRecord"("updatedAt");

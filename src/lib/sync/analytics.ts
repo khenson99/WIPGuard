@@ -37,6 +37,10 @@ import {
   type PruneImladrisMetricValuesResult,
 } from '@/lib/imladris/metric-value-retention';
 import {
+  pruneImladrisRawSourceRecords,
+  type PruneImladrisRawSourceRecordsResult,
+} from '@/lib/imladris/raw-source-retention';
+import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
@@ -79,6 +83,7 @@ export interface AnalyticsSyncResult {
   lineagePruning: GrowthPruneOutcome<PruneImladrisMetricLineageResult>;
   metricValuePruning: GrowthPruneOutcome<PruneImladrisMetricValuesResult>;
   outboxPruning: GrowthPruneOutcome<PruneOutboxEventsResult>;
+  rawSourceRecordPruning: GrowthPruneOutcome<PruneImladrisRawSourceRecordsResult>;
 }
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
@@ -299,6 +304,27 @@ export async function runAnalyticsSync(
     console.error('analytics_sync.outbox_pruning_failed', { error: message });
     return { error: message };
   });
+  // Raw provider snapshots: the third unbounded table. Runs after lineage
+  // pruning by design — it only deletes raw records no metric value's lineage
+  // still references (the NOT EXISTS guard), so the lineage pass aging out
+  // superseded values clears the way and this pass can never fire the
+  // ImladrisMetricLineage.rawRecordId SetNull FK action.
+  const rawSourceRecordPruning = await pruneImladrisRawSourceRecords({
+    prisma: input.prisma,
+    now,
+  }).catch((error: unknown): GrowthPruneOutcome<PruneImladrisRawSourceRecordsResult> => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.raw_source_record_pruning_failed', { error: message });
+    return { error: message };
+  });
 
-  return { refresh, pruning, imladris, lineagePruning, metricValuePruning, outboxPruning };
+  return {
+    refresh,
+    pruning,
+    imladris,
+    lineagePruning,
+    metricValuePruning,
+    outboxPruning,
+    rawSourceRecordPruning,
+  };
 }

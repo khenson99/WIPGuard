@@ -2452,6 +2452,9 @@ model ImladrisRawSourceRecord {
   @@index([provider, objectType, occurredAt])
   @@index([scopeKey, provider, objectType])
   @@index([organizationId, provider, objectType])
+  // Drives the retention prune scan (updatedAt < cutoff) in
+  // src/lib/imladris/raw-source-retention.ts.
+  @@index([updatedAt])
 }
 
 model ImladrisCanonicalMetricValue {
