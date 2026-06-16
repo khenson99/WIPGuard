@@ -42,6 +42,20 @@ interface MetricLineageRow {
   metadata: unknown;
 }
 
+/**
+ * Aggregate view of a metric value's lineage, computed in SQL.
+ *
+ * The dashboard only ever needs the row count, the distinct source keys and
+ * the latest capture timestamp — never the raw lineage rows. Loading raw
+ * rows via `include: { lineage }` pulled tens of millions of rows into the
+ * Node heap during the June 2026 incident and OOM-crashed the app.
+ */
+interface MetricLineageSummary {
+  count: number;
+  sourceKeys: string[];
+  latestCapturedAt: string | null;
+}
+
 interface CanonicalMetricRow {
   id: string;
   metricKey: string;
@@ -55,7 +69,10 @@ interface CanonicalMetricRow {
   periodEnd: Date | string;
   userId?: string | null;
   organizationId?: string | null;
-  lineage: MetricLineageRow[];
+  /** Raw lineage rows. Only populated by legacy callers/test fixtures. */
+  lineage?: MetricLineageRow[];
+  /** SQL-side aggregate; preferred over `lineage` when present. */
+  lineageSummary?: MetricLineageSummary;
 }
 
 interface FinancialGoalRow {
@@ -313,7 +330,10 @@ export type CompanyTrackerHealthBand = CompanyHealthBand;
 
 export type CompanyTrackerPrisma = Pick<
   PrismaClientType,
-  "imladrisCanonicalMetricValue" | "financialGoal" | "analyticsSnapshot"
+  | "imladrisCanonicalMetricValue"
+  | "imladrisMetricLineage"
+  | "financialGoal"
+  | "analyticsSnapshot"
 >;
 
 const ANALYTICS_SNAPSHOT_BASE_PROVIDER_KEYS = [
@@ -1783,7 +1803,8 @@ function companyMetric(
       sourceLineageKeys: [],
     };
   }
-  const latestSourceCapturedAt = latestLineageCapturedAt(row.lineage);
+  const lineageSummary = lineageSummaryForRow(row);
+  const latestSourceCapturedAt = lineageSummary.latestCapturedAt;
   return {
     key,
     label: definition?.label ?? key,
@@ -1795,9 +1816,19 @@ function companyMetric(
     calculationVersion: row.calculationVersion,
     computedAt: toIso(row.computedAt),
     periodEnd: toIso(row.periodEnd),
-    sourceLineageCount: row.lineage?.length ?? 0,
-    sourceLineageKeys: lineageSourceKeys(row.lineage),
+    sourceLineageCount: lineageSummary.count,
+    sourceLineageKeys: lineageSummary.sourceKeys,
     ...(latestSourceCapturedAt ? { latestSourceCapturedAt } : {}),
+  };
+}
+
+/** Prefer the SQL-side aggregate; fall back to raw rows for legacy callers. */
+function lineageSummaryForRow(row: CanonicalMetricRow): MetricLineageSummary {
+  if (row.lineageSummary) return row.lineageSummary;
+  return {
+    count: row.lineage?.length ?? 0,
+    sourceKeys: lineageSourceKeys(row.lineage),
+    latestCapturedAt: latestLineageCapturedAt(row.lineage),
   };
 }
 
@@ -2663,8 +2694,8 @@ function buildBenchmarkContext(input: {
 function canonicalSourceKeys(rows: CanonicalMetricRow[]): Set<string> {
   const sourceKeys = new Set<string>();
   for (const row of rows) {
-    for (const lineage of row.lineage ?? []) {
-      if (lineage.sourceKey) sourceKeys.add(lineage.sourceKey);
+    for (const sourceKey of lineageSummaryForRow(row).sourceKeys) {
+      if (sourceKey) sourceKeys.add(sourceKey);
     }
   }
   return sourceKeys;
@@ -2872,6 +2903,62 @@ function buildBoardReadiness(input: {
   };
 }
 
+/**
+ * Compute lineage aggregates (count, distinct source keys, latest capture)
+ * for the given canonical rows in a single SQL groupBy and attach them as
+ * `lineageSummary`. Result size is bounded by rows x distinct source keys
+ * (~a dozen), independent of how many lineage rows exist in the table.
+ *
+ * Rows that already carry inline `lineage` or a `lineageSummary` (legacy
+ * callers and test fixtures) are left untouched — `lineageSummaryForRow`
+ * derives their summary directly. Only rows that need the SQL aggregate
+ * trigger the groupBy, so callers passing pre-hydrated rows never require an
+ * `imladrisMetricLineage` delegate on their prisma client.
+ */
+async function attachLineageSummaries(
+  prisma: CompanyTrackerPrisma,
+  rows: CanonicalMetricRow[],
+): Promise<void> {
+  const rowsNeedingAggregate = rows.filter(
+    (row) => row.lineageSummary === undefined && row.lineage === undefined,
+  );
+  if (rowsNeedingAggregate.length === 0) return;
+
+  const grouped = await prisma.imladrisMetricLineage.groupBy({
+    by: ["metricValueId", "sourceKey"],
+    where: { metricValueId: { in: rowsNeedingAggregate.map((row) => row.id) } },
+    _count: { _all: true },
+    _max: { capturedAt: true },
+  });
+
+  const summaries = new Map<string, MetricLineageSummary>();
+  for (const group of grouped) {
+    const summary = summaries.get(group.metricValueId) ?? {
+      count: 0,
+      sourceKeys: [],
+      latestCapturedAt: null,
+    };
+    summary.count += group._count._all;
+    const sourceKey = group.sourceKey?.trim();
+    if (sourceKey) summary.sourceKeys.push(sourceKey);
+    const capturedAt = toIso(group._max.capturedAt);
+    if (capturedAt && (!summary.latestCapturedAt || capturedAt > summary.latestCapturedAt)) {
+      summary.latestCapturedAt = capturedAt;
+    }
+    summaries.set(group.metricValueId, summary);
+  }
+
+  for (const row of rowsNeedingAggregate) {
+    const summary = summaries.get(row.id) ?? {
+      count: 0,
+      sourceKeys: [],
+      latestCapturedAt: null,
+    };
+    summary.sourceKeys.sort();
+    row.lineageSummary = summary;
+  }
+}
+
 export async function buildCompanyTrackerDashboard(input: {
   prisma: CompanyTrackerPrisma;
   context: UserContext;
@@ -2894,17 +2981,17 @@ export async function buildCompanyTrackerDashboard(input: {
       })
     : Promise.resolve([]);
   const [canonicalRows, goals, analyticsStats] = await Promise.all([
+    // IMPORTANT: do NOT `include: { lineage }` here. Lineage rows number in
+    // the thousands per metric value; loading them into Node memory crashed
+    // the app with heap OOM during the June 2026 disk incident. The lineage
+    // facts the dashboard needs (count, source keys, latest capture) are
+    // aggregated in SQL below.
     input.prisma.imladrisCanonicalMetricValue.findMany({
       where: {
         metricKey: { in: dashboard.metricKeys },
         periodEnd: { lte: now },
         computedAt: { lte: now },
         ...canonicalMetricScopeWhere(context),
-      },
-      include: {
-        lineage: {
-          orderBy: [{ createdAt: "asc" }],
-        },
       },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
@@ -2922,6 +3009,7 @@ export async function buildCompanyTrackerDashboard(input: {
       rowMatchesContext(row, context)
     );
   });
+  await attachLineageSummaries(input.prisma, typedCanonicalRows);
   const typedGoals = activeGoalsForContext(goals as FinancialGoalRow[], context);
   const latestMetrics = latestRowsByMetric(typedCanonicalRows, context);
   const metrics = dashboard.metricKeys.map((metricKey) =>
