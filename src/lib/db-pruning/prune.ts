@@ -226,6 +226,32 @@ function buildPruneTableSpecs(policy: DbPrunePolicy, now: Date): PruneTableSpec[
   ];
 }
 
+const ROTATION_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Rotate the per-table processing order by calendar day.
+ *
+ * The per-table batch cap (maxBatchesPerTable) already bounds how long any
+ * one table holds the run in the common case, so it yields to the next table
+ * long before the wall-clock budget matters. But if deletes are
+ * pathologically slow (a single table's capped batches exceed the whole time
+ * budget), a *fixed* order would let the first table starve every later table
+ * on every run — the same tables would never be reached. Rotating the start
+ * index by day guarantees that, across consecutive daily runs, every table
+ * eventually leads and gets pruned.
+ *
+ * Trade-off: on days where ImladrisSourceSyncRun is ordered before
+ * ImladrisRawSourceRecord, a sync run emptied in this run is only collected
+ * on the next run. That lag is harmless — pruning is idempotent and
+ * eventually consistent.
+ */
+export function rotateSpecsForDay<T>(specs: T[], now: Date): T[] {
+  if (specs.length === 0) return specs;
+  const dayIndex = Math.floor(now.getTime() / ROTATION_DAY_MS);
+  const offset = ((dayIndex % specs.length) + specs.length) % specs.length;
+  return [...specs.slice(offset), ...specs.slice(0, offset)];
+}
+
 function logStructured(logger: DbPruneLogger, payload: Record<string, unknown>): void {
   logger(`[db-prune] ${JSON.stringify(payload)}`);
 }
@@ -337,7 +363,7 @@ export async function runDbPrune(input: {
   });
 
   const tables: PruneTableResult[] = [];
-  for (const spec of buildPruneTableSpecs(policy, now)) {
+  for (const spec of rotateSpecsForDay(buildPruneTableSpecs(policy, now), now)) {
     tables.push(
       await pruneTable({
         prisma: input.prisma,

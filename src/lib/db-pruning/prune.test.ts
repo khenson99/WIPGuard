@@ -87,13 +87,18 @@ describe("runDbPrune dry run", () => {
     expect(result.dryRun).toBe(true);
     expect(result.ok).toBe(true);
     expect(result.totalRows).toBe(5 * 7);
-    expect(result.tables.map((table) => table.table)).toEqual([
-      "ImladrisRawSourceRecord",
-      "ImladrisSourceSyncRun",
-      "MetricHistory",
-      "SecurityAuditEvent",
-      "AnalyticsSnapshot",
-    ]);
+    // All five tables are always processed; order rotates by day (see the
+    // rotation test below), so assert the set rather than a fixed order.
+    expect(result.tables).toHaveLength(5);
+    expect(result.tables.map((table) => table.table).sort()).toEqual(
+      [
+        "AnalyticsSnapshot",
+        "ImladrisRawSourceRecord",
+        "ImladrisSourceSyncRun",
+        "MetricHistory",
+        "SecurityAuditEvent",
+      ].sort(),
+    );
   });
 
   it("is forced by policy.forceDryRun even when the caller asks for a real run", async () => {
@@ -297,15 +302,44 @@ describe("batching", () => {
       logger: noopLogger,
     });
 
-    const rawRecords = result.tables.find(
-      (table) => table.table === "ImladrisRawSourceRecord",
-    );
-    expect(rawRecords?.batches).toBe(2);
-    expect(rawRecords?.truncated).toBe(true);
-    // The budget spans the whole run: later tables get no batches.
-    const audit = result.tables.find((table) => table.table === "SecurityAuditEvent");
-    expect(audit?.batches).toBe(0);
-    expect(audit?.truncated).toBe(false);
+    // The budget spans the whole run and is consumed in processed order, so
+    // assert by position (rotation-agnostic): the first table absorbs the
+    // budget; the last gets nothing.
+    expect(result.tables[0].batches).toBe(2);
+    expect(result.tables[0].truncated).toBe(true);
+    expect(result.tables.at(-1)?.batches).toBe(0);
+    expect(result.tables.at(-1)?.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
+  });
+});
+
+describe("daily order rotation (anti-starvation)", () => {
+  it("rotates the processed table order by calendar day", async () => {
+    const order = async (now: Date) => {
+      const { prisma } = buildMockPrisma();
+      const result = await runDbPrune({ prisma, now, policy: testPolicy(), logger: noopLogger });
+      return result.tables.map((table) => table.table);
+    };
+
+    const dayA = await order(new Date("2026-06-10T12:00:00.000Z"));
+    const dayB = await order(new Date("2026-06-11T12:00:00.000Z"));
+
+    // Same set every day, different lead — so no table is permanently first.
+    expect(dayA).not.toEqual(dayB);
+    expect([...dayA].sort()).toEqual([...dayB].sort());
+    expect(dayA[0]).not.toBe(dayB[0]);
+  });
+
+  it("rotateSpecsForDay cycles every table into the lead across N days", async () => {
+    const { rotateSpecsForDay } = await import("@/lib/db-pruning/prune");
+    const specs = ["a", "b", "c", "d", "e"];
+    const leads = new Set<string>();
+    for (let day = 0; day < specs.length; day += 1) {
+      const now = new Date(day * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000);
+      leads.add(rotateSpecsForDay(specs, now)[0]);
+    }
+    expect(leads).toEqual(new Set(specs));
+    expect(rotateSpecsForDay([], NOW)).toEqual([]);
   });
 });
 

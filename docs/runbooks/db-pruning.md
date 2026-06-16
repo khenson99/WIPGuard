@@ -102,6 +102,9 @@ and is untouchable regardless of its business date.
   `DB_PRUNE_MAX_BATCHES_PER_TABLE` (default 200), wall-clock budget via
   `DB_PRUNE_TIME_BUDGET_MS` (default 240000). A run that hits a cap reports
   `truncated: true` and simply continues the next day — the job is idempotent.
+  The per-table order rotates by calendar day so that, if one table's deletes
+  are pathologically slow and exhaust the time budget, it can't starve the
+  same later tables on every run.
 - **Dry run:** body `{ "dryRun": true }` or query `?dryRun=1` counts
   prunable rows without deleting. `DB_PRUNE_FORCE_DRY_RUN=true` forces every
   run (including scheduled ones) into dry-run mode — use it as a kill switch
@@ -118,16 +121,46 @@ This job is the **only** code path that deletes retention-managed rows
 `GET /api/health/db` (unauthenticated, coarse — booleans/counts only, same
 conventions as `/api/health/auth`) reports:
 
-- total database size in bytes, and the configured degraded threshold
-  (`DB_HEALTH_SIZE_DEGRADED_GB`, default 15 — i.e. 75% of the 20GB volume;
-  set it below the volume size because WAL/temp files live outside
-  `pg_database_size`),
-- the top tables by `pg_total_relation_size` (total/heap/index+toast bytes,
-  approximate row count).
+- `databaseBytes` (`pg_database_size`), `walBytes`, and `monitoredBytes`
+  (= database + WAL) against the configured degraded threshold
+  (`DB_HEALTH_SIZE_DEGRADED_GB`, default 15 — i.e. 75% of the 20GB volume),
+- `walReadable` — `pg_ls_waldir()` needs the `pg_monitor` role; if the app's
+  DB user lacks it, `walBytes` is null, `walReadable` is false, and WAL is
+  **not** counted toward the threshold,
+- the top tables by `pg_total_relation_size` (total / tableBytes [heap+TOAST,
+  where JSON payloads live] / indexBytes / approximate row count).
 
-Returns HTTP 503 with `status: "degraded"` when the size threshold is
-exceeded or the DB is unreachable — point an uptime check at it so the disk
-is alarmed long before it fills.
+Returns HTTP 503 with `status: "degraded"` when `monitoredBytes` exceeds the
+threshold or the DB is unreachable.
+
+**WAL caveat — important.** The 2026-06-10 fill was driven by WAL during
+recovery, and `pg_database_size` counts relations only. This endpoint now
+folds WAL into `monitoredBytes` *when the role can read it*, but temp files
+and replication-slot retention are still invisible to any in-DB query. Treat
+**Railway's volume-usage metric as the primary disk alarm** and this endpoint
+as the structural/secondary signal; a green check with `walReadable: false`
+has not seen WAL at all.
+
+## Indexes
+
+The prune predicates filter a single timestamp (`createdAt` / `startedAt`)
+per table. `MetricHistory` and `AnalyticsSnapshot` already have a `capturedAt`
+index; migration `20260615120000_add_retention_prune_indexes` adds
+`createdAt`/`startedAt` indexes to `SecurityAuditEvent`,
+`ImladrisSourceSyncRun`, and `ImladrisRawSourceRecord` (no existing index on
+those leads with a plain timestamp, so the prune would otherwise seq-scan).
+
+The migration runs inside a transaction (the `migrate.cjs` runner refuses
+`CONCURRENTLY`), so on the large existing tables a non-concurrent
+`CREATE INDEX` briefly holds a `SHARE` lock (blocks writes during the build).
+To avoid that on the next deploy, an operator MAY pre-create them by hand in a
+low-traffic window — the migration's `IF NOT EXISTS` then no-ops:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "ImladrisRawSourceRecord_createdAt_idx" ON "ImladrisRawSourceRecord"("createdAt");
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "ImladrisSourceSyncRun_startedAt_idx"   ON "ImladrisSourceSyncRun"("startedAt");
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "SecurityAuditEvent_createdAt_idx"      ON "SecurityAuditEvent"("createdAt");
+```
 
 ## Rollout
 

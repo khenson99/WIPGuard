@@ -13,11 +13,16 @@ import { prisma } from "@/lib/prisma";
  * intentionally coarse: byte counts, table names, and booleans only — no
  * env values, hostnames, or row contents.
  *
- * Returns `status: "degraded"` (HTTP 503) once the database size crosses
- * DB_HEALTH_SIZE_DEGRADED_GB (default 15 — i.e. 75% of the 20GB volume;
- * keep it well below the volume size because WAL and temp files live
- * outside pg_database_size). Point an uptime/alert check at this endpoint
- * so the disk pages someone long before it fills.
+ * Returns `status: "degraded"` (HTTP 503) once the monitored size crosses
+ * DB_HEALTH_SIZE_DEGRADED_GB (default 15 — i.e. 75% of the 20GB volume).
+ *
+ * WAL caveat: the 2026-06-10 disk fill was driven by WAL during recovery,
+ * and pg_database_size() counts relations only — not WAL, temp files, or
+ * replication-slot retention. When the DB role can read pg_ls_waldir()
+ * (pg_monitor), WAL bytes ARE included in the monitored total and the
+ * threshold; otherwise `walReadable` is false and WAL is invisible here.
+ * Treat Railway's volume-usage metric as the PRIMARY disk alarm and this
+ * endpoint as the structural/secondary signal.
  */
 
 const DEFAULT_DEGRADED_GB = 15;
@@ -28,11 +33,15 @@ interface DatabaseSizeRow {
   total_bytes: number;
 }
 
+interface WalSizeRow {
+  wal_bytes: number;
+}
+
 interface TableSizeRow {
   table_name: string;
   total_bytes: number;
-  heap_bytes: number;
-  index_and_toast_bytes: number;
+  table_bytes: number;
+  index_bytes: number;
   approx_rows: number;
 }
 
@@ -65,8 +74,8 @@ export async function GET() {
       SELECT
         c.relname AS table_name,
         pg_total_relation_size(c.oid)::float8 AS total_bytes,
-        pg_relation_size(c.oid)::float8 AS heap_bytes,
-        (pg_total_relation_size(c.oid) - pg_relation_size(c.oid))::float8 AS index_and_toast_bytes,
+        pg_table_size(c.oid)::float8 AS table_bytes,
+        pg_indexes_size(c.oid)::float8 AS index_bytes,
         GREATEST(c.reltuples, 0)::float8 AS approx_rows
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -75,19 +84,40 @@ export async function GET() {
       LIMIT ${TOP_TABLE_LIMIT}
     `;
 
-    const totalBytes = Math.round(size?.total_bytes ?? 0);
+    // WAL is read separately and tolerantly: pg_ls_waldir() needs the
+    // pg_monitor role, which the app's DB user may not have. A failure here
+    // must not fail the whole probe — we just report walReadable: false.
+    let walBytes: number | null = null;
+    try {
+      const [wal] = await prisma.$queryRaw<WalSizeRow[]>`
+        SELECT COALESCE(SUM(size), 0)::float8 AS wal_bytes FROM pg_ls_waldir()
+      `;
+      walBytes = Math.round(wal?.wal_bytes ?? 0);
+    } catch {
+      walBytes = null;
+    }
+
+    const databaseBytes = Math.round(size?.total_bytes ?? 0);
+    // Monitor relations + WAL (when visible) against the threshold — WAL is
+    // exactly what filled the disk during the outage.
+    const monitoredBytes = databaseBytes + (walBytes ?? 0);
     checks.database = {
       reachable: true,
       latencyMs: Date.now() - startedAt,
-      totalBytes,
+      databaseBytes,
+      walBytes,
+      walReadable: walBytes !== null,
+      monitoredBytes,
       degradedThresholdBytes: thresholdBytes,
-      overThreshold: totalBytes >= thresholdBytes,
+      overThreshold: monitoredBytes >= thresholdBytes,
     };
     checks.topTables = tables.map((table) => ({
       table: table.table_name,
       totalBytes: Math.round(table.total_bytes),
-      heapBytes: Math.round(table.heap_bytes),
-      indexAndToastBytes: Math.round(table.index_and_toast_bytes),
+      // Heap + TOAST: the actual row data, including JSON payloads (which
+      // live in TOAST and dominate ImladrisRawSourceRecord).
+      tableBytes: Math.round(table.table_bytes),
+      indexBytes: Math.round(table.index_bytes),
       approxRows: Math.round(table.approx_rows),
     }));
   } catch (error) {
