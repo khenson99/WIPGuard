@@ -28,7 +28,7 @@ import type {
 } from "./types";
 
 export interface DeltaChipProps {
-  value: number;
+  value: number | null;
   prev: number | null;
   good: "up" | "down";
   compareLabel?: string;
@@ -76,14 +76,14 @@ export function TrustChip({ status }: { status: MetricStatus }) {
 }
 
 export interface PaceBarProps {
-  value: number;
+  value: number | null;
   target: number | null | undefined;
   good: "up" | "down";
   unit: MetricUnit;
 }
 
 export function PaceBar({ value, target, good, unit }: PaceBarProps) {
-  if (target == null) return null;
+  if (target == null || value == null) return null;
   const scaleMax = Math.max(value, target) * 1.14;
   const fillW = Math.max(0, Math.min(1, value / scaleMax)) * 100;
   const tickPos = Math.max(0, Math.min(1, target / scaleMax)) * 100;

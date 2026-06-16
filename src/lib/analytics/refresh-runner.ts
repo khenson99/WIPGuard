@@ -63,7 +63,12 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 function timeoutMsForRefreshJob(providerKey: string): number {
-  if (providerKey === "stripe") return 25_000;
+  // Providers whose syncs paginate over large datasets need more than the 10s
+  // default. Stripe (billing history) and Linear both routinely exceed it —
+  // Linear's fetch became more round-trip-heavy after #591 shrank its GraphQL
+  // page sizes to fit the complexity cap, so it serially pages issues +
+  // per-project issues and overran 10s ("Timed out after 10000ms").
+  if (providerKey === "stripe" || providerKey === "linear") return 25_000;
   return 10_000;
 }
 

@@ -127,14 +127,20 @@ function mergeMetrics(model: ImladrisModel, payload: MetricsApiResponse): number
       m.warnings = lm.warnings.filter((w): w is string => typeof w === "string");
     }
     // Production route returns `sourceLineage`; the prototype spec read `lineage`.
+    // UNION lineage-discovered providers with the metric's declared dependencies
+    // (the catalog/seed set) — never SHRINK to the lineage subset. The server
+    // caps lineage evidence rows (MAX_LINEAGE_EVIDENCE_ROWS), so a high-volume
+    // provider's rows can fall outside that window; replacing `sources` with the
+    // truncated subset is what made real dependencies (GitHub, Google Analytics,
+    // Search Console) show "feeds 0 metrics" on the sources board.
     const lineage = lm.sourceLineage ?? lm.lineage;
     if (Array.isArray(lineage) && lineage.length) {
-      const keys: ImladrisProviderKey[] = [];
+      const keys: ImladrisProviderKey[] = [...m.sources];
       lineage.forEach((row) => {
         const k = providerKey(row.sourceKey ?? row.sourceType ?? row.source);
         if (k && keys.indexOf(k) < 0) keys.push(k);
       });
-      if (keys.length) m.sources = keys;
+      m.sources = keys;
     }
     if (typeof lm.calculationVersion === "string") m.calculationVersion = lm.calculationVersion;
   });
@@ -204,7 +210,8 @@ function flatFillRest(model: ImladrisModel, len: number): void {
   model.metrics.forEach((m) => {
     if (m.liveTrend) return;
     m.liveTrend = false;
-    m.history = new Array<number>(len).fill(m.value == null ? 0 : m.value);
+    // No live value ⇒ empty history ⇒ renders "—" (never a seeded sample value).
+    m.history = m.value == null ? [] : new Array<number>(len).fill(m.value);
   });
 }
 
@@ -352,6 +359,15 @@ export async function loadImladrisData(): Promise<LoadResult> {
 
   const model = buildImladrisModel();
   model.mode = "live";
+  // Live-or-error: the seed model contributes STRUCTURE only (labels, units,
+  // targets, cohort scaffolding) — never its sample VALUES. Clear every seeded
+  // value up front so any metric the API omits, or returns without a value,
+  // renders as an honest empty state ("—") instead of a fabricated demo number.
+  for (const m of model.metrics) {
+    m.value = null;
+    m.history = [];
+    m.liveTrend = false;
+  }
 
   const metricsPayload = metricsR.value as MetricsApiResponse;
   const matched = mergeMetrics(model, metricsPayload);
@@ -380,7 +396,7 @@ export async function loadImladrisData(): Promise<LoadResult> {
   if (!trends.available) {
     model.metrics.forEach((m) => {
       m.liveTrend = false;
-      m.history = [m.value == null ? 0 : m.value];
+      m.history = m.value == null ? [] : [m.value];
     });
     model.months = [model.currentMonth || IMLADRIS_FALLBACK_MONTH(model)];
   }

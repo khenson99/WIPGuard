@@ -118,6 +118,40 @@ describe("loadImladrisData — live-or-error gating", () => {
     expect(result.data.metricByKey["revenue.arr"].sources).toEqual(["stripe", "hubspot"]);
   });
 
+  it("keeps a metric's declared source dependencies even when lineage omits them (no 'feeds 0 metrics')", async () => {
+    installFetch((url) => {
+      if (url.includes("/api/imladris/metrics") && !url.includes("history")) {
+        return {
+          ok: true,
+          json: {
+            metrics: [
+              {
+                key: "marketing.website_traffic",
+                value: { count: 42_000 },
+                status: "partial",
+                // Server caps lineage evidence rows (MAX_LINEAGE_EVIDENCE_ROWS),
+                // so high-volume providers (GA/GSC) can fall outside the window
+                // and aren't cited here. They must NOT be dropped from sources.
+                sourceLineage: [{ sourceKey: "SEMRUSH" }, { sourceKey: "WEBFLOW" }],
+              },
+            ],
+          },
+        };
+      }
+      return respondAllOk(url);
+    });
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const sources = result.data.metricByKey["marketing.website_traffic"].sources;
+    // Declared dependencies survive even though lineage omitted them.
+    expect(sources).toContain("googleAnalytics");
+    expect(sources).toContain("googleSearchConsole");
+    // Lineage-cited providers are still present.
+    expect(sources).toContain("semrush");
+    expect(sources).toContain("webflow");
+  });
+
   it("reads source record counts from latestSyncRun.recordCount and marks degraded state", async () => {
     installFetch(respondAllOk);
     const result = await loadImladrisData();
@@ -125,6 +159,47 @@ describe("loadImladrisData — live-or-error gating", () => {
     if (!result.ok) return;
     expect(result.data.providers.stripe.records).toBe(4321);
     expect(result.data.providers.semrush.state).toBe("stale");
+  });
+});
+
+describe("loadImladrisData — no seeded sample values leak in live mode", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("clears the seeded value when the API returns a metric without a value (renders empty, not a demo number)", async () => {
+    installFetch((url) => {
+      if (url.includes("/api/imladris/metrics") && !url.includes("history")) {
+        return {
+          ok: true,
+          json: {
+            metrics: [
+              { key: "revenue.arr", value: { amount: 5_000_000 }, status: "ready" },
+              // Matched canonical metric, but the source errored so there's no value.
+              { key: "revenue.mrr", value: null, status: "error" },
+            ],
+          },
+        };
+      }
+      return respondAllOk(url);
+    });
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const mrr = result.data.metricByKey["revenue.mrr"];
+    // NOT the seeded 353_000 — an honest empty state instead of a fabricated number.
+    expect(mrr.value).toBeNull();
+    expect(mrr.history).toEqual([]);
+    expect(mrr.status).toBe("error");
+  });
+
+  it("does not surface seeded values for metrics absent from the live /metrics payload", async () => {
+    installFetch(respondAllOk); // payload only carries revenue.arr + finance.net_burn
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const mrr = result.data.metricByKey["revenue.mrr"];
+    expect(mrr.value).toBeNull();
+    expect(mrr.history).toEqual([]);
   });
 });
 

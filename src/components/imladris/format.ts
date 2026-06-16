@@ -33,19 +33,22 @@ export function fmtMetric(metric: Pick<NormalizedMetric, "unit">, value: number 
 }
 
 export interface Snapshot {
-  value: number;
+  value: number | null;
   prev: number | null;
   idx: number;
 }
 
 export function snapshot(metric: Pick<NormalizedMetric, "history">, idx?: number | null): Snapshot {
   const h = metric.history;
+  // Live-or-error: a metric with no published value has an empty history and
+  // must read as an honest empty state ("—"), never a fabricated number.
+  if (h.length === 0) return { value: null, prev: null, idx: 0 };
   const i = idx == null ? h.length - 1 : Math.max(0, Math.min(idx, h.length - 1));
   return { value: h[i], prev: i > 0 ? h[i - 1] : null, idx: i };
 }
 
-export function deltaPct(value: number, prev: number | null): number | null {
-  if (prev == null || prev === 0) return null;
+export function deltaPct(value: number | null, prev: number | null): number | null {
+  if (value == null || prev == null || prev === 0) return null;
   return ((value - prev) / Math.abs(prev)) * 100;
 }
 
@@ -83,11 +86,11 @@ export function monthShort(ym: string): string {
 
 /** Direction-aware pacing state for a metric vs its target. */
 export function paceState(
-  value: number,
+  value: number | null,
   target: number | null | undefined,
   good: "up" | "down",
 ): "on" | "behind" | null {
-  if (target == null) return null;
+  if (value == null || target == null) return null;
   return good === "down"
     ? value <= target * 1.05 ? "on" : "behind"
     : value >= target * 0.92 ? "on" : "behind";

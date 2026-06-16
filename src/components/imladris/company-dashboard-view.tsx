@@ -131,7 +131,8 @@ function CompanyHeadline({
   if (!arr) return null;
 
   const arrSnap = snapshot(arr, idx);
-  const netNew = arrSnap.prev != null ? arrSnap.value - arrSnap.prev : null;
+  const netNew =
+    arrSnap.value != null && arrSnap.prev != null ? arrSnap.value - arrSnap.prev : null;
   const arrHasTrend = hasTrend(model, arr);
 
   return (
