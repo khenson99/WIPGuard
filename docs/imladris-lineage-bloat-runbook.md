@@ -1,7 +1,38 @@
 # ImladrisMetricLineage bloat — incident runbook & reclaim plan
 
-**Status:** code fixes landed on this branch; production reclaim steps below require Kyle's
-approval (data deletion / maintenance window / volume sizing are gated).
+**Status:** code fixes landed on this branch. **Production reclaim was executed on 2026-06-16**
+(see "Execution record" below) — `ImladrisMetricLineage` is now 104 MB / 272,680 rows, DB 987 MB,
+disk 3%. Volume sizing remains Kyle-only and was not touched.
+
+## Execution record (2026-06-16, run by Claude with Kyle's go-ahead)
+
+The reclaim hit the live incident mid-run: the still-deployed old code spawned up to **13 concurrent
+unbounded lineage reads** that re-spilled 20+ GB to `pgsql_tmp` (disk hit 94%). Steps taken:
+
+1. **Cancelled/terminated** the runaway lineage reads (read-only SELECTs; safe) — repeatedly, as old
+   code kept respawning them.
+2. **Set a cluster-wide guard** `ALTER SYSTEM SET temp_file_limit='4GB'` + `pg_reload_conf()` so any
+   future runaway read self-aborts at 4 GB instead of filling the disk. **Still in place** — Kyle to
+   decide whether to keep/retune/reset (`ALTER SYSTEM RESET temp_file_limit; SELECT pg_reload_conf();`
+   and `ALTER DATABASE railway RESET temp_file_limit;`).
+3. **Reclaim method changed** from batched-delete + `VACUUM FULL` to an **atomic CTAS swap**, because
+   the ~36.7M rows turned out to be genuinely *live* (not dead-tuple bloat), making row-by-row deletes
+   too slow (a single 100k batch exceeded a 150s timeout). The swap (one transaction, `ACCESS
+   EXCLUSIVE`): create `_swap` table `LIKE` original, `INSERT … SELECT` the 24 winners' lineage
+   (272,680 rows via the `metricValueId` index), `DROP` the 15 GB table, `RENAME`, recreate the 4
+   indexes + 2 FKs with identical names. Rolls back safely on any error; frees disk at COMMIT.
+4. **Verified:** 272,680 rows, 4 indexes + PK + 2 FKs (original names), owner `postgres`, 0 orphans,
+   `ANALYZE` run, per-table autovacuum options applied. The old-code canonical⨝lineage read now runs
+   in 63 ms with an in-memory hash (no temp spill).
+
+**Remaining:** merge + deploy [#604] (durable fix — stops regrowth, makes reads winner-scoped, enables
+batched retention); decide the fate of the 4 GB `temp_file_limit` guard. NOTE: canonical
+materialization has been frozen since 2026-06-11 — deploying the fix will also resume it on safe code.
+
+---
+
+The original plan below is retained for reference; the executed approach (CTAS swap) superseded the
+batched-delete + `VACUUM FULL` steps.
 
 ## Incident summary (2026-06-11 07:49–07:54 UTC)
 
