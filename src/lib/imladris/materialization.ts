@@ -116,7 +116,25 @@ type RawSourceRecordDelegate = {
   findMany(args: Record<string, unknown>): Promise<RawSourceRecordRow[]>;
 };
 
+type CanonicalMetricReuseRow = {
+  id: string;
+  value: unknown;
+  status: unknown;
+  confidence: number;
+  warnings: string[];
+  periodEnd: Date | string;
+  computedAt: Date | string;
+};
+
 type CanonicalMetricDelegate = {
+  findFirst(args: {
+    where: Record<string, unknown>;
+    orderBy?: Array<Record<string, unknown>>;
+  }): Promise<CanonicalMetricReuseRow | null>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<{ id: string }>;
   upsert(args: {
     where: Record<string, unknown>;
     create: Record<string, unknown>;
@@ -125,6 +143,10 @@ type CanonicalMetricDelegate = {
 };
 
 type MetricLineageDelegate = {
+  findMany(args: {
+    where: { metricValueId: string };
+    select?: Record<string, boolean>;
+  }): Promise<Array<Record<string, unknown>>>;
   deleteMany(args: { where: { metricValueId: string } }): Promise<unknown>;
   createMany(args: { data: Array<Record<string, unknown>> }): Promise<unknown>;
 };
@@ -1308,6 +1330,34 @@ function dedupeRawSourceRecords(
   );
 }
 
+function lineageRowSignature(row: {
+  rawRecordId: unknown;
+  sourceKey: unknown;
+  sourceType: unknown;
+  sourceId: unknown;
+  capturedAt: unknown;
+  provider: unknown;
+  calculationVersion: unknown;
+}): string {
+  const capturedAt = dateFrom(row.capturedAt);
+  return [
+    typeof row.rawRecordId === "string" ? row.rawRecordId : "",
+    typeof row.sourceKey === "string" ? row.sourceKey : "",
+    typeof row.sourceType === "string" ? row.sourceType : "",
+    typeof row.sourceId === "string" ? row.sourceId : "",
+    capturedAt ? String(capturedAt.getTime()) : "",
+    typeof row.provider === "string" ? row.provider : "",
+    typeof row.calculationVersion === "string" ? row.calculationVersion : "",
+  ].join("|");
+}
+
+function lineageSignatureSetsMatch(existing: string[], desired: string[]): boolean {
+  if (existing.length !== desired.length) return false;
+  const sortedExisting = [...existing].sort();
+  const sortedDesired = [...desired].sort();
+  return sortedExisting.every((signature, index) => signature === sortedDesired[index]);
+}
+
 async function replaceLineage(input: {
   metricLineage: MetricLineageDelegate;
   metricValueId: string;
@@ -1315,29 +1365,71 @@ async function replaceLineage(input: {
   calculationVersion: string;
   asOf: Date;
 }) {
+  const desired = input.records.map((record) => ({
+    metricValueId: input.metricValueId,
+    rawRecordId: record.id,
+    sourceKey: sourceKeyForProvider(record.provider),
+    sourceType: recordObjectType(record),
+    sourceId: rawRecordSourceId(record),
+    capturedAt: firstDateAtOrBefore(
+      input.asOf,
+      record.occurredAt,
+      record.sourceUpdatedAt,
+      record.sourceCreatedAt,
+    ),
+    metadata: {
+      provider: record.provider,
+      calculationVersion: input.calculationVersion,
+    },
+  }));
+
+  // Delete-and-reinsert of identical lineage was the dominant write churn on
+  // ImladrisMetricLineage (every sync cycle, per metric value). Compare the
+  // stored rows against the desired rows first and skip the rewrite when the
+  // lineage is unchanged — one indexed read instead of a full delete+insert.
+  const existing = await input.metricLineage.findMany({
+    where: { metricValueId: input.metricValueId },
+    select: {
+      rawRecordId: true,
+      sourceKey: true,
+      sourceType: true,
+      sourceId: true,
+      capturedAt: true,
+      metadata: true,
+    },
+  });
+  const existingSignatures = existing.map((row) => {
+    const metadata = asRecord(row.metadata);
+    return lineageRowSignature({
+      rawRecordId: row.rawRecordId,
+      sourceKey: row.sourceKey,
+      sourceType: row.sourceType,
+      sourceId: row.sourceId,
+      capturedAt: row.capturedAt,
+      provider: metadata.provider,
+      calculationVersion: metadata.calculationVersion,
+    });
+  });
+  const desiredSignatures = desired.map((row) =>
+    lineageRowSignature({
+      rawRecordId: row.rawRecordId,
+      sourceKey: row.sourceKey,
+      sourceType: row.sourceType,
+      sourceId: row.sourceId,
+      capturedAt: row.capturedAt,
+      provider: row.metadata.provider,
+      calculationVersion: row.metadata.calculationVersion,
+    }),
+  );
+  if (lineageSignatureSetsMatch(existingSignatures, desiredSignatures)) {
+    return;
+  }
+
   await input.metricLineage.deleteMany({
     where: { metricValueId: input.metricValueId },
   });
-  if (input.records.length === 0) return;
-  await input.metricLineage.createMany({
-    data: input.records.map((record) => ({
-      metricValueId: input.metricValueId,
-      rawRecordId: record.id,
-      sourceKey: sourceKeyForProvider(record.provider),
-      sourceType: recordObjectType(record),
-      sourceId: rawRecordSourceId(record),
-      capturedAt: firstDateAtOrBefore(
-        input.asOf,
-        record.occurredAt,
-        record.sourceUpdatedAt,
-        record.sourceCreatedAt,
-      ),
-      metadata: {
-        provider: record.provider,
-        calculationVersion: input.calculationVersion,
-      },
-    })),
-  });
+  if (desired.length === 0) return;
+  await input.metricLineage.createMany({ data: desired });
 }
 
 export async function materializeImladrisDevelopmentMetrics(
@@ -1374,39 +1466,20 @@ export async function materializeImladrisDevelopmentMetrics(
     requiredProviders,
     emptyWarning: "No Linear, GitHub, or PostHog raw records were available for this period.",
   });
-  const metricValue = await canonicalMetrics.upsert({
-    where: {
-      organizationId_userId_metricKey_periodEnd_calculationVersion: {
-        organizationId: context.organizationId,
-        userId: context.userId,
-        metricKey: "development.delivery_health",
-        periodEnd: input.periodEnd,
-        calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
-      },
-    },
-    create: {
-      metricKey: "development.delivery_health",
-      department: "development",
-      unit: "score",
-      value,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      status,
-      confidence: confidenceFor(records),
-      warnings,
-      calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
-      computedAt: now,
-      userId: context.userId,
-      organizationId: context.organizationId,
-    },
-    update: {
-      value,
-      periodStart: input.periodStart,
-      status,
-      confidence: confidenceFor(records),
-      warnings,
-      computedAt: now,
-    },
+  const metricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context,
+    metricKey: "development.delivery_health",
+    department: "development",
+    unit: "score",
+    value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status,
+    confidence: confidenceFor(records),
+    warnings,
+    calculationVersion: DEVELOPMENT_CALCULATION_VERSION,
+    now,
   });
 
   await replaceLineage({
@@ -1547,39 +1620,20 @@ export async function materializeImladrisProductActivationMetric(
           emptyWarning: "No HubSpot account cohort was available for activation-rate materialization.",
         })
       : ["No HubSpot account cohort was available for activation-rate materialization."];
-  const metricValue = await canonicalMetrics.upsert({
-    where: {
-      organizationId_userId_metricKey_periodEnd_calculationVersion: {
-        organizationId: context.organizationId,
-        userId: context.userId,
-        metricKey: "product.activation_rate",
-        periodEnd: input.periodEnd,
-        calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
-      },
-    },
-    create: {
-      metricKey: "product.activation_rate",
-      department: "development",
-      unit: "percent",
-      value,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      status,
-      confidence: confidenceFor(records),
-      warnings,
-      calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
-      computedAt: now,
-      userId: context.userId,
-      organizationId: context.organizationId,
-    },
-    update: {
-      value,
-      periodStart: input.periodStart,
-      status,
-      confidence: confidenceFor(records),
-      warnings,
-      computedAt: now,
-    },
+  const metricValue = await upsertCanonicalMetric({
+    canonicalMetrics,
+    context,
+    metricKey: "product.activation_rate",
+    department: "development",
+    unit: "percent",
+    value,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    status,
+    confidence: confidenceFor(records),
+    warnings,
+    calculationVersion: PRODUCT_ACTIVATION_CALCULATION_VERSION,
+    now,
   });
 
   await replaceLineage({
@@ -3870,6 +3924,49 @@ function computeFinanceValues(records: RawSourceRecordRow[], asOf: Date) {
   };
 }
 
+function stableValueSignature(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return JSON.stringify(value) ?? String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableValueSignature(entry)).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableValueSignature(entryValue)}`);
+  return `{${entries.join(",")}}`;
+}
+
+function sameUtcDay(left: Date, right: Date): boolean {
+  return left.toISOString().slice(0, 10) === right.toISOString().slice(0, 10);
+}
+
+function canReuseLatestCanonicalMetric(
+  latest: CanonicalMetricReuseRow,
+  input: {
+    value: Record<string, unknown>;
+    periodEnd: Date;
+    status: keyof typeof ImladrisMetricStatus;
+    confidence: number;
+    warnings: string[];
+  },
+): boolean {
+  const latestPeriodEnd = dateFrom(latest.periodEnd);
+  if (!latestPeriodEnd) return false;
+  // Only reuse rows from the same UTC day so daily/monthly history series
+  // still get at least one row per day, and never "reuse forward" onto a row
+  // with a newer window than the one being materialized.
+  if (latestPeriodEnd.getTime() > input.periodEnd.getTime()) return false;
+  if (!sameUtcDay(latestPeriodEnd, input.periodEnd)) return false;
+  if (String(latest.status) !== String(input.status)) return false;
+  if (Number(latest.confidence) !== input.confidence) return false;
+  const latestWarnings = Array.isArray(latest.warnings) ? latest.warnings : [];
+  if (latestWarnings.length !== input.warnings.length) return false;
+  if (latestWarnings.some((warning, index) => warning !== input.warnings[index])) return false;
+  return stableValueSignature(latest.value) === stableValueSignature(input.value);
+}
+
 async function upsertCanonicalMetric(input: {
   canonicalMetrics: CanonicalMetricDelegate;
   context: ImladrisActorContext;
@@ -3886,6 +3983,30 @@ async function upsertCanonicalMetric(input: {
   now?: Date;
 }) {
   const context = normalizeContext(input.context);
+
+  // Every sync cycle materializes with periodEnd = "now", which lands in the
+  // unique key — so each cycle used to insert a brand-new metric value row
+  // (plus a full lineage copy) even when nothing changed. That unbounded
+  // growth took ImladrisMetricLineage to tens of millions of rows and caused
+  // the 2026-06-11 disk-exhaustion incident. When the freshly computed metric
+  // is identical to the latest stored row from the same UTC day, refresh that
+  // row's computedAt instead of creating a new snapshot.
+  const latest = await input.canonicalMetrics.findFirst({
+    where: {
+      organizationId: context.organizationId,
+      userId: context.userId,
+      metricKey: input.metricKey,
+      calculationVersion: input.calculationVersion,
+    },
+    orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
+  });
+  if (latest && canReuseLatestCanonicalMetric(latest, input)) {
+    return input.canonicalMetrics.update({
+      where: { id: latest.id },
+      data: { computedAt: input.now ?? new Date() },
+    });
+  }
+
   return input.canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {

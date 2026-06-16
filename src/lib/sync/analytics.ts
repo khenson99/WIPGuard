@@ -28,6 +28,11 @@ import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
+import {
+  parseImladrisLineageMaxRowsPerRun,
+  parseImladrisLineageRetentionDays,
+  pruneImladrisMetricLineage,
+} from '@/lib/imladris/lineage-retention';
 import { discoverConnectedUserIds } from './users';
 
 type RollingRangePreset = '7d' | '30d' | '90d';
@@ -49,6 +54,7 @@ export interface AnalyticsSyncInput {
 export interface AnalyticsSyncResult {
   refresh: Awaited<ReturnType<typeof runAnalyticsRefresh>>;
   pruning: Awaited<ReturnType<typeof pruneAnalyticsSnapshots>>;
+  lineagePruning: Awaited<ReturnType<typeof pruneImladrisMetricLineage>>;
   imladris: ImladrisMaterializationSyncResult[];
 }
 
@@ -239,5 +245,22 @@ export async function runAnalyticsSync(
     }),
   ]);
 
-  return { refresh, pruning, imladris };
+  // Prune ImladrisMetricLineage AFTER materialization so the just-written
+  // "latest per metric" rows are protected by the prune's latest-row guard.
+  // Tolerate failures: lineage retention must never fail the sync cycle.
+  let lineagePruning: AnalyticsSyncResult['lineagePruning'];
+  try {
+    lineagePruning = await pruneImladrisMetricLineage({
+      prisma: input.prisma,
+      olderThanDays: parseImladrisLineageRetentionDays(),
+      maxRowsPerRun: parseImladrisLineageMaxRowsPerRun(),
+      now,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('analytics_sync.imladris_lineage_prune_failed', { error: message });
+    lineagePruning = { deleted: 0, cutoff: new Date(now.getTime()).toISOString(), capped: false };
+  }
+
+  return { refresh, pruning, lineagePruning, imladris };
 }

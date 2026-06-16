@@ -5565,3 +5565,59 @@ describe("Imladris service", () => {
     });
   });
 });
+
+// ── Regression: dashboard reads must not eagerly include lineage over history ──
+//
+// Including lineage on the full canonical-history query pulled millions of
+// lineage rows through pgsql_tmp and exhausted the Postgres volume
+// (2026-06-11 incident). The history query must omit `include`, and lineage
+// must be loaded via a second query bounded to the winning row ids.
+describe("Imladris dashboard lineage loading is bounded", () => {
+  it("does not include lineage on the full-history query and scopes lineage by winner id", async () => {
+    const now = new Date("2026-05-29T10:00:00.000Z");
+    const canonicalFindMany = vi.fn(async (args?: { where?: Record<string, unknown> }) => {
+      // History query (no id filter) returns the full set WITHOUT lineage.
+      const where = args?.where ?? {};
+      const isWinnerLookup = "id" in where;
+      const row = {
+        id: "mv_net_burn",
+        metricKey: "finance.net_burn",
+        department: "finance",
+        unit: "currency",
+        value: { amount: 125_000, currency: "USD" },
+        periodStart: new Date("2026-05-01T00:00:00.000Z"),
+        periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+        status: "READY",
+        confidence: 0.88,
+        warnings: [] as string[],
+        calculationVersion: "finance-net-burn-v1",
+        computedAt: new Date("2026-05-29T09:00:00.000Z"),
+        userId: "user_1",
+        organizationId: "org_1",
+      };
+      return isWinnerLookup
+        ? [{ ...row, lineage: [{ sourceKey: "mercury", sourceType: "raw", sourceId: null, rawRecordId: "raw_1", capturedAt: now, metadata: {} }] }]
+        : [row];
+    });
+    const prisma = createPrismaMock({
+      imladrisCanonicalMetricValue: { findMany: canonicalFindMany },
+    });
+
+    await buildImladrisMetrics({ prisma, context: CONTEXT, now });
+
+    const calls = canonicalFindMany.mock.calls.map(
+      (call) => (call[0] ?? {}) as { where?: Record<string, unknown>; include?: unknown },
+    );
+    const historyCall = calls.find((args) => !("id" in (args.where ?? {})));
+    const winnerCall = calls.find((args) => "id" in (args.where ?? {}));
+
+    // The history query must NOT eagerly include lineage.
+    expect(historyCall).toBeDefined();
+    expect(historyCall).not.toHaveProperty("include");
+
+    // Lineage is loaded via a second query, bounded to winner ids.
+    expect(winnerCall).toBeDefined();
+    expect(winnerCall?.where?.id).toEqual({ in: ["mv_net_burn"] });
+    expect(winnerCall?.include).toMatchObject({ lineage: expect.anything() });
+  });
+});

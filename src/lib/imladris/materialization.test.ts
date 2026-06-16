@@ -81,11 +81,14 @@ function createPrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => ({ id: "metric_1", ...create })),
     },
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -131,11 +134,14 @@ function createActivationPrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_1", ...create })),
     },
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -267,6 +273,8 @@ function createFinancePrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => {
         const metricKey = String(create.metricKey);
         return {
@@ -278,6 +286,7 @@ function createFinancePrismaMock() {
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -288,6 +297,8 @@ function createEmptyFinancePrismaMock() {
       findMany: vi.fn(async () => []),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => {
         const metricKey = String(create.metricKey);
         return {
@@ -299,6 +310,7 @@ function createEmptyFinancePrismaMock() {
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -367,11 +379,14 @@ function createSalesPrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_qualified_pipeline", ...create })),
     },
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -534,11 +549,14 @@ function createMarketingPrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_pipeline_efficiency", ...create })),
     },
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -633,6 +651,8 @@ function createCustomerSuccessPrismaMock() {
       ]),
     },
     imladrisCanonicalMetricValue: {
+      findFirst: vi.fn(async () => null),
+      update: vi.fn(async ({ where }) => ({ id: where.id })),
       upsert: vi.fn(async ({ create }) => ({
         id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
         ...create,
@@ -641,6 +661,7 @@ function createCustomerSuccessPrismaMock() {
     imladrisMetricLineage: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+      findMany: vi.fn(async () => []),
     },
   };
 }
@@ -1072,11 +1093,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_linear_alias", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -1164,11 +1188,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_pr_alias", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -1258,11 +1285,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_uppercase_repo_pr", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -1348,11 +1378,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_event_alias", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -1932,11 +1965,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_formatted_state", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -1974,11 +2010,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_scalar_state", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2017,11 +2056,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_false_completion", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2059,11 +2101,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_development_state_name", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2551,11 +2596,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_snake_case", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2609,11 +2657,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_case_variant", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2674,11 +2725,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_nested_snake_case", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2734,11 +2788,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_nested_account", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2796,11 +2853,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_wrapped_account", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -2858,11 +2918,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_activation_scalar_wrapped", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -3652,6 +3715,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -3660,6 +3725,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -3753,6 +3819,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -3761,6 +3829,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -3834,6 +3903,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -3842,6 +3913,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -3923,6 +3995,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -3931,6 +4005,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -4860,11 +4935,14 @@ describe("Imladris canonical materialization", () => {
         findMany: vi.fn(async () => rawRecords),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -4920,11 +4998,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -4982,11 +5063,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5077,11 +5161,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5178,11 +5265,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5233,11 +5323,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5292,11 +5385,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5359,11 +5455,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5420,11 +5519,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5481,11 +5583,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5561,11 +5666,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5630,11 +5738,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5718,11 +5829,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5799,11 +5913,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5885,11 +6002,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -5959,11 +6079,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6031,11 +6154,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6110,11 +6236,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6181,11 +6310,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6249,11 +6381,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6359,11 +6494,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${String(create.metricKey).replaceAll(".", "_")}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6446,11 +6584,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${String(create.metricKey).replaceAll(".", "_")}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6520,11 +6661,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${String(create.metricKey).replaceAll(".", "_")}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6643,11 +6787,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${String(create.metricKey).replaceAll(".", "_")}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6759,11 +6906,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${String(create.metricKey).replaceAll(".", "_")}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6832,11 +6982,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6903,11 +7056,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -6961,11 +7117,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7022,11 +7181,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7137,11 +7299,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7208,11 +7373,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7269,11 +7437,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7330,11 +7501,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7391,11 +7565,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7454,11 +7631,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7517,11 +7697,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7580,11 +7763,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7651,11 +7837,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7699,11 +7888,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7747,11 +7939,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7793,11 +7988,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7845,11 +8043,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7899,11 +8100,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -7953,11 +8157,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8207,11 +8414,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8266,11 +8476,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8325,11 +8538,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8384,11 +8600,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8442,11 +8661,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8512,11 +8734,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8573,11 +8798,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8632,11 +8860,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8693,11 +8924,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8754,11 +8988,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8815,11 +9052,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8880,11 +9120,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -8956,11 +9199,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9026,11 +9272,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9120,11 +9369,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9224,11 +9476,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9328,11 +9583,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9389,11 +9647,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9446,11 +9707,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9507,11 +9771,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9577,11 +9844,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9647,11 +9917,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9717,11 +9990,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9786,11 +10062,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9857,11 +10136,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -9942,11 +10224,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10027,11 +10312,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10103,11 +10391,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10189,11 +10480,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10248,11 +10542,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10310,11 +10607,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10368,11 +10668,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10426,11 +10729,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10490,11 +10796,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10555,11 +10864,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10620,11 +10932,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10685,11 +11000,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10750,11 +11068,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10815,11 +11136,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10882,11 +11206,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -10948,11 +11275,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11018,11 +11348,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11084,11 +11417,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11154,11 +11490,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11220,11 +11559,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11284,11 +11626,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11348,11 +11693,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11412,11 +11760,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11487,11 +11838,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11570,11 +11924,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11638,11 +11995,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11706,11 +12066,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11781,11 +12144,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11851,11 +12217,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11919,11 +12288,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -11987,11 +12359,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12055,11 +12430,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12121,11 +12499,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12182,11 +12563,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12256,11 +12640,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12333,11 +12720,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12398,11 +12788,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12459,11 +12852,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12546,11 +12942,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12627,11 +13026,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12712,11 +13114,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12809,11 +13214,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12894,11 +13302,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -12967,11 +13378,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13027,11 +13441,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13073,11 +13490,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13134,11 +13554,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13195,11 +13618,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13268,11 +13694,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13341,11 +13770,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13426,11 +13858,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13483,11 +13918,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13530,11 +13968,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13577,11 +14018,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13626,11 +14070,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13711,11 +14158,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13762,11 +14212,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13808,11 +14261,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13854,11 +14310,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13919,11 +14378,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -13967,11 +14429,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14015,11 +14480,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14062,11 +14530,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14111,11 +14582,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14158,11 +14632,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14227,11 +14704,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14278,11 +14758,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14327,11 +14810,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14374,11 +14860,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14423,11 +14912,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14469,11 +14961,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14515,11 +15010,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14591,11 +15089,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14655,11 +15156,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14724,11 +15228,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14774,11 +15281,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14839,11 +15349,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14888,11 +15401,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14937,11 +15453,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -14990,11 +15509,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15043,11 +15565,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15091,11 +15616,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15138,11 +15666,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15185,11 +15716,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15231,11 +15765,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15277,11 +15814,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15323,11 +15863,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15368,11 +15911,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15416,11 +15962,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15464,11 +16013,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: `metric_${create.metricKey}`, ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15755,6 +16307,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${create.metricKey.replaceAll(".", "_")}`,
           ...create,
@@ -15763,6 +16317,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15861,6 +16416,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${create.metricKey.replaceAll(".", "_")}`,
           ...create,
@@ -15869,6 +16426,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -15929,6 +16487,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${create.metricKey.replaceAll(".", "_")}`,
           ...create,
@@ -15937,6 +16497,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16137,11 +16698,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_formatted_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16181,11 +16745,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_human_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16225,11 +16792,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_sql_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16269,11 +16839,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_stage_label", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16315,11 +16888,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_uppercase_scalar_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16361,11 +16937,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_nested_deal", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16437,11 +17016,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_amount_aliases", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16480,11 +17062,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_negative_deal", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16536,11 +17121,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_spaced_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16593,11 +17181,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_numeric_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16665,11 +17256,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_duplicate_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16737,11 +17331,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_duplicate_touch", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16809,11 +17406,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_slack_object_type_alias", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16881,11 +17481,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_google_object_type_alias", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -16954,11 +17557,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_metadata_touch", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17014,11 +17620,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_nested_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17075,11 +17684,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_wrapped_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17147,11 +17759,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_future_collaboration", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17219,11 +17834,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_sales_stale_collaboration", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17805,6 +18423,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -17813,6 +18433,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17906,6 +18527,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -17914,6 +18537,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -17986,6 +18610,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -17994,6 +18620,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18067,6 +18694,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -18075,6 +18704,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18203,6 +18833,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -18211,6 +18843,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18309,6 +18942,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -18317,6 +18952,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18412,6 +19048,8 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({
           id: `metric_${String(create.metricKey).replaceAll(".", "_")}`,
           ...create,
@@ -18420,6 +19058,7 @@ describe("Imladris canonical materialization", () => {
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18745,11 +19384,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_gsc_latest_valid_snapshot", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18788,11 +19430,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_nested_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18832,11 +19477,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_wrapped_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18892,11 +19540,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_uppercase_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18941,11 +19592,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_blank_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -18982,11 +19636,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_string_false_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19036,11 +19693,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_duplicate_unify", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19106,11 +19766,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_snapshot_spend", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19526,11 +20189,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_latest_snapshot_totals", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19598,11 +20264,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_latest_valid_snapshot", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19666,11 +20335,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_snapshot_sessions", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19755,11 +20427,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_fractional_sessions", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19809,11 +20484,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_semrush_snapshot", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19917,11 +20595,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_wrapped_traffic", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -19971,11 +20652,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_snapshot", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20025,11 +20709,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_children", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20085,11 +20772,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_aliases", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20143,11 +20833,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_uppercase_customer", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20203,11 +20896,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_uppercase_form_contact", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20259,11 +20955,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_wrapped_snapshot", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20303,11 +21002,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_webflow_wrapped_child", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20359,11 +21061,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_micros", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20434,11 +21139,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_nested_micros", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20524,11 +21232,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_wrapped_spend", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20659,11 +21370,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_negative_inputs", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20727,11 +21441,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_negative_deal", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20802,11 +21519,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_duplicate_deal_id", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20862,11 +21582,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_nested_deal", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20922,11 +21645,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_wrapped_deal", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -20980,11 +21706,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_scalar_source", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -21038,11 +21767,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_formatted_stage", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -21111,11 +21843,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_terminal_pipeline", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -21169,11 +21904,14 @@ describe("Imladris canonical materialization", () => {
         ]),
       },
       imladrisCanonicalMetricValue: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async ({ where }) => ({ id: where.id })),
         upsert: vi.fn(async ({ create }) => ({ id: "metric_marketing_stage_label_pipeline", ...create })),
       },
       imladrisMetricLineage: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
         createMany: vi.fn(async ({ data }) => ({ count: data.length })),
+        findMany: vi.fn(async () => []),
       },
     };
 
@@ -24531,5 +25269,248 @@ describe("Imladris canonical materialization", () => {
       atRiskAccounts: 1,
       accountsWithBillingRisk: 1,
     });
+  });
+});
+
+// ── Regression: lineage/metric write churn (2026-06-11 disk-exhaustion incident) ──
+//
+// Before the fix, every sync cycle inserted a brand-new canonical metric value
+// (periodEnd = "now" lands in the unique key) plus a full lineage copy, even
+// when nothing changed. That unbounded growth drove ImladrisMetricLineage to
+// ~15 GB and exhausted the Postgres volume. These tests pin the dedupe
+// behaviour: identical re-materialization must reuse the row and skip lineage.
+
+type StatefulCanonicalRow = {
+  id: string;
+  metricKey: string;
+  calculationVersion: string;
+  value: unknown;
+  status: unknown;
+  confidence: number;
+  warnings: string[];
+  periodEnd: Date;
+  computedAt: Date;
+  userId: string | null;
+  organizationId: string | null;
+};
+
+type StatefulLineageRow = {
+  metricValueId: string;
+  rawRecordId: string | null;
+  sourceKey: string;
+  sourceType: string;
+  sourceId: string | null;
+  capturedAt: Date | null;
+  metadata: unknown;
+};
+
+function createStatefulImladrisStore() {
+  const canonicalRows: StatefulCanonicalRow[] = [];
+  const lineageRows: StatefulLineageRow[] = [];
+  let idSeq = 0;
+
+  const canonical = {
+    findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      const matches = canonicalRows
+        .filter(
+          (row) =>
+            row.organizationId === where.organizationId &&
+            row.userId === where.userId &&
+            row.metricKey === where.metricKey &&
+            row.calculationVersion === where.calculationVersion,
+        )
+        .sort((a, b) => {
+          const periodDelta = b.periodEnd.getTime() - a.periodEnd.getTime();
+          if (periodDelta !== 0) return periodDelta;
+          return b.computedAt.getTime() - a.computedAt.getTime();
+        });
+      return matches[0] ?? null;
+    }),
+    update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+      const row = canonicalRows.find((candidate) => candidate.id === where.id);
+      if (row) Object.assign(row, data);
+      return row ?? { id: where.id };
+    }),
+    upsert: vi.fn(
+      async (args: {
+        where: {
+          organizationId_userId_metricKey_periodEnd_calculationVersion: {
+            organizationId: string | null;
+            userId: string | null;
+            metricKey: string;
+            periodEnd: Date | string;
+            calculationVersion: string;
+          };
+        };
+        create: Record<string, unknown>;
+        update: Record<string, unknown>;
+      }) => {
+        const key = args.where.organizationId_userId_metricKey_periodEnd_calculationVersion;
+        let row = canonicalRows.find(
+          (candidate) =>
+            candidate.organizationId === key.organizationId &&
+            candidate.userId === key.userId &&
+            candidate.metricKey === key.metricKey &&
+            candidate.periodEnd.getTime() === new Date(key.periodEnd).getTime() &&
+            candidate.calculationVersion === key.calculationVersion,
+        );
+        if (row) {
+          Object.assign(row, args.update);
+        } else {
+          row = { id: `mv_${++idSeq}`, ...args.create } as StatefulCanonicalRow;
+          canonicalRows.push(row);
+        }
+        return row;
+      },
+    ),
+  };
+
+  const lineage = {
+    findMany: vi.fn(async ({ where }: { where: { metricValueId: string } }) =>
+      lineageRows
+        .filter((row) => row.metricValueId === where.metricValueId)
+        .map((row) => ({
+          rawRecordId: row.rawRecordId,
+          sourceKey: row.sourceKey,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
+          capturedAt: row.capturedAt,
+          metadata: row.metadata,
+        })),
+    ),
+    deleteMany: vi.fn(async ({ where }: { where: { metricValueId: string } }) => {
+      const before = lineageRows.length;
+      for (let i = lineageRows.length - 1; i >= 0; i -= 1) {
+        if (lineageRows[i].metricValueId === where.metricValueId) lineageRows.splice(i, 1);
+      }
+      return { count: before - lineageRows.length };
+    }),
+    createMany: vi.fn(async ({ data }: { data: StatefulLineageRow[] }) => {
+      for (const entry of data) lineageRows.push({ ...entry });
+      return { count: data.length };
+    }),
+  };
+
+  return { canonicalRows, lineageRows, canonical, lineage };
+}
+
+function developmentRawRecords(): RawSourceRecordFixture[] {
+  return [
+    {
+      id: "raw_linear_1",
+      provider: IntegrationProvider.LINEAR,
+      objectType: "issue",
+      externalId: "LIN-1",
+      occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+      sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+      sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+      payload: {
+        id: "LIN-1",
+        state: { type: "completed" },
+        createdAt: "2026-05-10T10:00:00.000Z",
+        completedAt: "2026-05-15T10:00:00.000Z",
+      },
+    },
+    {
+      id: "raw_github_1",
+      provider: IntegrationProvider.GITHUB,
+      objectType: "pull_request",
+      externalId: "repo/pull/7",
+      occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+      sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+      sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+      payload: { number: 7, merged: true, created_at: "2026-05-16T10:00:00.000Z", merged_at: "2026-05-18T10:00:00.000Z" },
+    },
+    {
+      id: "raw_posthog_1",
+      provider: IntegrationProvider.POSTHOG,
+      objectType: "event",
+      externalId: "evt_1",
+      occurredAt: new Date("2026-05-19T10:00:00.000Z"),
+      sourceCreatedAt: null,
+      sourceUpdatedAt: null,
+      payload: { event: "activation_completed", distinct_id: "acct_1" },
+    },
+  ];
+}
+
+function statefulDevelopmentPrisma(store: ReturnType<typeof createStatefulImladrisStore>, rawRecords: RawSourceRecordFixture[]) {
+  return {
+    imladrisRawSourceRecord: { findMany: vi.fn(async () => rawRecords) },
+    imladrisCanonicalMetricValue: store.canonical,
+    imladrisMetricLineage: store.lineage,
+  } as never;
+}
+
+describe("Imladris materialization write-churn dedupe", () => {
+  // Mirrors production: each sync cycle sets periodEnd = now (see
+  // runImladrisMaterializationSync), so the canonical unique key advances every
+  // cycle. The dedupe must still collapse same-day, unchanged cycles.
+  const periodStart = new Date("2026-05-01T00:00:00.000Z");
+
+  it("reuses the same-day canonical row and skips lineage rewrite when nothing changed", async () => {
+    const store = createStatefulImladrisStore();
+    const prisma = statefulDevelopmentPrisma(store, developmentRawRecords());
+
+    const firstNow = new Date("2026-05-29T12:00:00.000Z");
+    const first = await materializeImladrisDevelopmentMetrics({
+      prisma,
+      context: CONTEXT,
+      periodStart,
+      periodEnd: firstNow,
+      now: firstNow,
+    });
+    const secondNow = new Date("2026-05-29T12:05:00.000Z"); // same UTC day, later cycle
+    const second = await materializeImladrisDevelopmentMetrics({
+      prisma,
+      context: CONTEXT,
+      periodStart,
+      periodEnd: secondNow,
+      now: secondNow,
+    });
+
+    // Same canonical row reused — not a second insert.
+    expect(first.metricValueId).toBe(second.metricValueId);
+    expect(store.canonicalRows).toHaveLength(1);
+    expect(store.canonical.upsert).toHaveBeenCalledTimes(1);
+    expect(store.canonical.update).toHaveBeenCalledTimes(1);
+
+    // Lineage written once, then skipped (no churn on the unchanged second run).
+    expect(store.canonical.findFirst).toHaveBeenCalledTimes(2);
+    expect(store.lineage.createMany).toHaveBeenCalledTimes(1);
+    expect(store.lineage.deleteMany).toHaveBeenCalledTimes(1);
+    const lineageCount = store.lineageRows.length;
+    expect(lineageCount).toBeGreaterThan(0);
+    // Second run must not duplicate lineage rows.
+    expect(store.lineageRows).toHaveLength(lineageCount);
+  });
+
+  it("inserts a new row and rewrites lineage when the metric value changes", async () => {
+    const store = createStatefulImladrisStore();
+
+    const firstNow = new Date("2026-05-29T12:00:00.000Z");
+    await materializeImladrisDevelopmentMetrics({
+      prisma: statefulDevelopmentPrisma(store, developmentRawRecords()),
+      context: CONTEXT,
+      periodStart,
+      periodEnd: firstNow,
+      now: firstNow,
+    });
+
+    // Drop the merged PR so delivery-health changes → no reuse.
+    const changedRecords = developmentRawRecords().filter((record) => record.id !== "raw_github_1");
+    const secondNow = new Date("2026-05-29T12:05:00.000Z");
+    await materializeImladrisDevelopmentMetrics({
+      prisma: statefulDevelopmentPrisma(store, changedRecords),
+      context: CONTEXT,
+      periodStart,
+      periodEnd: secondNow,
+      now: secondNow,
+    });
+
+    expect(store.canonicalRows).toHaveLength(2);
+    expect(store.canonical.upsert).toHaveBeenCalledTimes(2);
+    expect(store.canonical.update).not.toHaveBeenCalled();
+    expect(store.lineage.createMany).toHaveBeenCalledTimes(2);
   });
 });

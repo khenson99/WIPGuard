@@ -2,6 +2,7 @@ import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnin
 import { getImladrisDashboardDefinition, getImladrisDerivedMetricDefinition } from "@/lib/imladris/catalog";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
 import { normalizeImladrisObjectType } from "@/lib/imladris/object-types";
+import { attachWinnerLineage } from "@/lib/imladris/winner-lineage";
 import type { PrismaClientType } from "@/lib/prisma";
 
 // Derived metrics are computed on read and never materialized as canonical
@@ -91,6 +92,7 @@ interface MetricLineageRow {
 }
 
 interface CanonicalMetricRow {
+  id: string;
   metricKey: string;
   department: string;
   unit: string;
@@ -104,6 +106,10 @@ interface CanonicalMetricRow {
   computedAt: Date | string;
   userId?: string | null;
   organizationId?: string | null;
+  /**
+   * Loaded separately for winning rows only — never eagerly included on the
+   * full canonical history (see the 2026-06-11 pgsql_tmp incident).
+   */
   lineage?: MetricLineageRow[];
 }
 
@@ -3802,7 +3808,10 @@ function buildMetrics(
 }
 
 export async function buildInvestorDashboardExport(input: {
-  prisma: Pick<PrismaClientType, "imladrisCanonicalMetricValue" | "imladrisRawSourceRecord">;
+  prisma: Pick<
+    PrismaClientType,
+    "imladrisCanonicalMetricValue" | "imladrisRawSourceRecord"
+  >;
   context: InvestorDashboardExportContext;
   range: InvestorDashboardRange;
   fromDate: Date;
@@ -3818,11 +3827,6 @@ export async function buildInvestorDashboardExport(input: {
         periodEnd: { lte: input.toDate },
         computedAt: { lte: now },
         ...canonicalMetricScopeWhere(context),
-      },
-      include: {
-        lineage: {
-          orderBy: [{ createdAt: "asc" }],
-        },
       },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
@@ -3855,6 +3859,11 @@ export async function buildInvestorDashboardExport(input: {
     ),
     context,
   );
+
+  // Load lineage only for the winning row per metric, via a second id-bounded
+  // query. The history query above intentionally omits lineage — including it
+  // pulled millions of lineage rows through pgsql_tmp (2026-06-11 incident).
+  await attachWinnerLineage(input.prisma, [...metricsByKey.values()]);
   const mrr = metricPayload(metricsByKey.get("revenue.mrr"));
   const arr = metricPayload(metricsByKey.get("revenue.arr"));
   const totalRevenue = metricPayload(metricsByKey.get("revenue.total_revenue"));

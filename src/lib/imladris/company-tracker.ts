@@ -10,6 +10,7 @@ import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import type { ImladrisDashboardDefinition } from "@/lib/imladris/catalog";
 import { normalizeMetricConfidence, normalizeMetricStatus, normalizeMetricWarnings } from "@/lib/imladris/confidence";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
+import { attachWinnerLineage } from "@/lib/imladris/winner-lineage";
 import type {
   AnalyticsDashboardData,
   AnalyticsMetricsLayer,
@@ -55,7 +56,11 @@ interface CanonicalMetricRow {
   periodEnd: Date | string;
   userId?: string | null;
   organizationId?: string | null;
-  lineage: MetricLineageRow[];
+  /**
+   * Loaded separately for winning rows only — never eagerly included on the
+   * full canonical history (see the 2026-06-11 pgsql_tmp incident).
+   */
+  lineage?: MetricLineageRow[];
 }
 
 interface FinancialGoalRow {
@@ -2901,11 +2906,6 @@ export async function buildCompanyTrackerDashboard(input: {
         computedAt: { lte: now },
         ...canonicalMetricScopeWhere(context),
       },
-      include: {
-        lineage: {
-          orderBy: [{ createdAt: "asc" }],
-        },
-      },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
     goalsQuery,
@@ -2924,6 +2924,13 @@ export async function buildCompanyTrackerDashboard(input: {
   });
   const typedGoals = activeGoalsForContext(goals as FinancialGoalRow[], context);
   const latestMetrics = latestRowsByMetric(typedCanonicalRows, context);
+
+  // Load lineage only for the winning row per metric, via a second id-bounded
+  // query. The history query above intentionally omits lineage — including it
+  // pulled millions of lineage rows through pgsql_tmp (2026-06-11 incident).
+  const winners = [...latestMetrics.values()];
+  await attachWinnerLineage(input.prisma, winners);
+
   const metrics = dashboard.metricKeys.map((metricKey) =>
     companyMetric(latestMetrics.get(metricKey) ?? null, metricKey, analyticsStats),
   );
@@ -2948,9 +2955,12 @@ export async function buildCompanyTrackerDashboard(input: {
     summary,
     northStar,
   });
+  // Source coverage is derived from lineage, which is only loaded for the
+  // winning rows (the current per-metric values). This is both the correct
+  // "currently available" set and bounded — never the full history.
   const sourceCoverage = buildSourceCoverage({
     dashboard,
-    canonicalRows: typedCanonicalRows,
+    canonicalRows: winners,
     analyticsStats,
     now,
   });

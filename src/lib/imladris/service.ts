@@ -8,6 +8,7 @@ import {
 } from "@/lib/imladris/derived-metrics";
 import { getImladrisHistoricalWindow } from "@/lib/imladris/ingestion";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
+import { attachWinnerLineage } from "@/lib/imladris/winner-lineage";
 import { snapshotKeyQueryVariants } from "@/lib/integrations/provider-registry";
 import { resolveIntegrationOwnerUserId } from "@/lib/integrations/ownership";
 import type { IntegrationProvider } from "@/generated/prisma/client";
@@ -67,6 +68,7 @@ interface MetricLineageRow {
 }
 
 interface CanonicalMetricRow {
+  id: string;
   metricKey: string;
   department: string;
   unit: string;
@@ -80,7 +82,14 @@ interface CanonicalMetricRow {
   computedAt: Date | string;
   userId?: string | null;
   organizationId?: string | null;
-  lineage: MetricLineageRow[];
+  /**
+   * Lineage is intentionally NOT eagerly included on canonical metric queries.
+   * It is loaded separately for the small set of "winner" rows only — the
+   * lineage table can hold millions of rows across historical metric values,
+   * and `include: { lineage }` over the full history caused multi-minute
+   * queries and pgsql_tmp disk exhaustion in production (2026-06-11 incident).
+   */
+  lineage?: MetricLineageRow[];
 }
 
 function scalarDateValue(value: unknown, seen = new WeakSet<object>()): unknown {
@@ -1551,11 +1560,6 @@ export async function buildImladrisMetrics(input: {
         },
         ...canonicalMetricScopeWhere(context),
       },
-      include: {
-        lineage: {
-          orderBy: [{ createdAt: "asc" }],
-        },
-      },
       orderBy: [{ periodEnd: "desc" }, { computedAt: "desc" }],
     }),
   ]);
@@ -1588,6 +1592,13 @@ export async function buildImladrisMetrics(input: {
     if (canonicalMonthKey(rowPeriodEnd) !== previousMonthKey(currentPeriodEnd)) continue;
     previousCanonicalByMetricKey.set(row.metricKey, row);
   }
+
+  // Load lineage only for the winning row per metric, via a second query
+  // bounded to those ids. The full-history query above intentionally omits
+  // lineage: `include: { lineage }` over the whole history pulls every
+  // historical lineage row (millions) through pgsql_tmp and caused the
+  // 2026-06-11 disk-exhaustion incident.
+  await attachWinnerLineage(input.prisma, [...canonicalByMetricKey.values()]);
 
   const baseMetrics = IMLADRIS_METRIC_DEFINITIONS.map((definition) => {
     const canonicalRow = canonicalByMetricKey.get(definition.key);

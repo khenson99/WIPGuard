@@ -386,14 +386,17 @@ async function executeCronSync(input: {
       rules: null as unknown,
       health: null as unknown,
       pruning: null as unknown,
+      lineagePruning: null as unknown,
       retention: null as unknown,
     };
 
     if (analyticsSyncResult.status === "fulfilled") {
-      // Split bundled result back into `analytics` (refresh) and `pruning`
-      // top-level fields — external monitors read these separately.
+      // Split bundled result back into `analytics` (refresh), `pruning`
+      // (analytics-snapshot retention) and `lineagePruning` (Imladris lineage
+      // retention) top-level fields — external monitors read these separately.
       settled.analytics = analyticsSyncResult.value.refresh;
       settled.pruning = analyticsSyncResult.value.pruning;
+      settled.lineagePruning = analyticsSyncResult.value.lineagePruning;
       failures.push(...collectAnalyticsPartialFailures(analyticsSyncResult.value));
     } else {
       const msg = analyticsSyncResult.reason instanceof Error ? analyticsSyncResult.reason.message : String(analyticsSyncResult.reason);

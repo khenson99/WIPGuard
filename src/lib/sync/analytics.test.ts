@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAnalyticsRefresh } from "@/lib/analytics/refresh-runner";
 import { pruneAnalyticsSnapshots } from "@/lib/analytics/snapshots";
 import { materializeImladrisCanonicalMetrics } from "@/lib/imladris/materialization";
+import { pruneImladrisMetricLineage } from "@/lib/imladris/lineage-retention";
 import { runAnalyticsSync } from "@/lib/sync/analytics";
 import { discoverConnectedUserIds } from "@/lib/sync/users";
 
@@ -15,6 +16,12 @@ vi.mock("@/lib/analytics/snapshots", () => ({
 
 vi.mock("@/lib/imladris/materialization", () => ({
   materializeImladrisCanonicalMetrics: vi.fn(),
+}));
+
+vi.mock("@/lib/imladris/lineage-retention", () => ({
+  pruneImladrisMetricLineage: vi.fn(),
+  parseImladrisLineageRetentionDays: vi.fn(() => 30),
+  parseImladrisLineageMaxRowsPerRun: vi.fn(() => 200_000),
 }));
 
 vi.mock("@/lib/sync/users", () => ({
@@ -42,6 +49,11 @@ describe("runAnalyticsSync", () => {
     vi.clearAllMocks();
     vi.mocked(runAnalyticsRefresh).mockResolvedValue({ refreshed: true } as never);
     vi.mocked(pruneAnalyticsSnapshots).mockResolvedValue({ deleted: 0 } as never);
+    vi.mocked(pruneImladrisMetricLineage).mockResolvedValue({
+      deleted: 0,
+      cutoff: "2026-05-02T12:00:00.000Z",
+      capped: false,
+    } as never);
     vi.mocked(materializeImladrisCanonicalMetrics).mockResolvedValue([
       {
         metricKey: "development.delivery_health",
@@ -236,6 +248,38 @@ describe("runAnalyticsSync", () => {
       ]),
     }));
     expect(materializeImladrisCanonicalMetrics).toHaveBeenCalledTimes(1);
+  });
+
+  it("prunes Imladris metric lineage each cycle and surfaces the result", async () => {
+    const prisma = createPrismaMock();
+    vi.mocked(pruneImladrisMetricLineage).mockResolvedValue({
+      deleted: 4242,
+      cutoff: "2026-05-02T12:00:00.000Z",
+      capped: false,
+    } as never);
+
+    const result = await runAnalyticsSync({ prisma: prisma as never });
+
+    expect(pruneImladrisMetricLineage).toHaveBeenCalledOnce();
+    expect(pruneImladrisMetricLineage).toHaveBeenCalledWith(
+      expect.objectContaining({ prisma, olderThanDays: 30, maxRowsPerRun: 200_000 }),
+    );
+    expect(result.lineagePruning).toEqual({
+      deleted: 4242,
+      cutoff: "2026-05-02T12:00:00.000Z",
+      capped: false,
+    });
+  });
+
+  it("never fails the sync cycle when lineage pruning throws", async () => {
+    const prisma = createPrismaMock();
+    vi.mocked(pruneImladrisMetricLineage).mockRejectedValue(new Error("deadlock detected"));
+
+    const result = await runAnalyticsSync({ prisma: prisma as never });
+
+    // The cycle still resolves; lineage pruning degrades to a zero-delete result.
+    expect(result.lineagePruning.deleted).toBe(0);
+    expect(materializeImladrisCanonicalMetrics).toHaveBeenCalled();
   });
 
   it("continues canonical materialization when provider refresh reports failures and surfaces a warning", async () => {
