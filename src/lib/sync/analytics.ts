@@ -40,6 +40,7 @@ import {
   materializeImladrisCanonicalMetrics,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
+import { emitRetentionTelemetry } from './retention-telemetry';
 import { discoverConnectedUserIds } from './users';
 
 type RollingRangePreset = '7d' | '30d' | '90d';
@@ -325,6 +326,16 @@ export async function runAnalyticsSync(
     console.error('analytics_sync.outbox_pruning_failed', { error: message });
     return { error: message };
   });
+
+  // Structured retention telemetry + early-warning alerts for the tables
+  // behind the 2026-06-10 disk-full outage (see ./retention-telemetry.ts).
+  // Runs for BOTH callers (cron route + worker orchestrator) since both go
+  // through runAnalyticsSync. Wholly non-throwing — observability must never
+  // abort the sync.
+  await emitRetentionTelemetry(
+    { prisma: input.prisma, lineagePruning, metricValuePruning, outboxPruning },
+    now,
+  );
 
   // Strip full metric values from the result — they're already persisted to
   // the DB. Keeping them in the response body retains hundreds of MB across
