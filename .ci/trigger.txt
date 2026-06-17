@@ -1,2 +1,0 @@
-ci-trigger=2026-02-19T01:59:58Z
-branch=claude/nifty-lederberg
