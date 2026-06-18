@@ -25,7 +25,6 @@ import {
   getPreviousPhase,
   getPhaseConfig,
   hasSoakTimeElapsed,
-  getPromotionBlockers,
   promotePhase,
   rollbackPhase,
   updateGate,

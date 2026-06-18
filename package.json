@@ -37,7 +37,6 @@
     "chart.js": "^4.4.1",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
     "ioredis": "^5.10.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
@@ -49,7 +48,6 @@
     "prisma": "^7.4.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "recharts": "^3.7.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "zustand": "^5.0.11"
