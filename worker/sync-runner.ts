@@ -24,11 +24,12 @@
 
 import { workerConfig } from './config';
 import { logger } from './logger';
-import { getWorkerPrisma, disconnectWorkerPrisma } from './prisma';
+import { getWorkerPrisma, getWorkerPool, disconnectWorkerPrisma } from './prisma';
 import { startHealthServer, updateSyncStatus, setReady } from './health';
 import { withTimeout } from './timeout';
 import { assertSyncResultsHealthy } from './sync-results';
 import { loadOrchestrator } from './orchestrator-loader';
+import { withSyncAdvisoryLock } from '@/lib/sync/sync-lock';
 
 // ─── Graceful Shutdown ───────────────────────────────────────────────────────
 
@@ -116,12 +117,35 @@ async function runSyncCycle(): Promise<void> {
 
   try {
     const orchestrator = await loadOrchestrator();
-    const syncResult = await withTimeout(
-      orchestrator.runSync(prisma, workerConfig.modules),
-      workerConfig.syncTimeoutMs,
-      `Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`
+    // Run under the global sync advisory lock so the worker can never run a
+    // heavy cycle concurrently with the web cron (/api/cron/sync) or another
+    // worker replica. Overlapping cycles each load large raw-record sets and
+    // drove the heap monotonically to the V8 limit — the OOM crash loop (see
+    // docs/runbooks/oom-crash-loop.md). The lock is taken on the worker's own
+    // pool, but Postgres advisory locks coordinate across processes.
+    const outcome = await withSyncAdvisoryLock(
+      () =>
+        withTimeout(
+          orchestrator.runSync(prisma, workerConfig.modules),
+          workerConfig.syncTimeoutMs,
+          `Sync cycle timed out after ${workerConfig.syncTimeoutMs}ms`
+        ),
+      { pool: getWorkerPool() }
     );
-    assertSyncResultsHealthy(syncResult);
+
+    if (!outcome.ran) {
+      // Another cycle holds the lock — skip rather than stack. This is the
+      // guard working, not an error, so report it as a successful no-op.
+      const durationMs = Date.now() - startTime;
+      updateSyncStatus('success', durationMs);
+      logger.info('Sync cycle skipped — another sync cycle is already running', {
+        reason: outcome.reason,
+        durationMs,
+      });
+      return;
+    }
+
+    assertSyncResultsHealthy(outcome.result);
 
     const durationMs = Date.now() - startTime;
     updateSyncStatus('success', durationMs);

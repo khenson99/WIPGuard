@@ -66,6 +66,24 @@ export function getWorkerPrisma(): PrismaClient {
   return workerPrisma;
 }
 
+/**
+ * Return the worker's underlying pg connection pool, initializing the worker
+ * Prisma client (and therefore the pool) on first use.
+ *
+ * Needed by the global sync advisory lock, which must pin a SINGLE physical
+ * connection for `pg_try_advisory_lock`/`pg_advisory_unlock`. The worker passes
+ * its OWN pool (not the web app's) so the lock is taken on the worker's
+ * connections while still coordinating with the web cron — Postgres advisory
+ * locks are shared across connections and processes.
+ */
+export function getWorkerPool(): Pool {
+  getWorkerPrisma();
+  if (!workerPool) {
+    throw new Error('Worker pg connection pool is not initialized');
+  }
+  return workerPool;
+}
+
 export async function disconnectWorkerPrisma(): Promise<void> {
   if (workerPrisma) {
     logger.info('Disconnecting worker Prisma client');

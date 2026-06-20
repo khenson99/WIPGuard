@@ -90,8 +90,13 @@ done
   (mirroring `pruneAnalyticsSnapshots`) **after** auditing all readers
   (`company-goals.ts`, `investor-dashboard-export.ts`, `expense-dashboard.ts`,
   monthly history back to 2025-01-01) so longer-range features don't lose data.
-- **Worker service** (`Dockerfile.worker`) also runs sync; if it is enabled,
+- ~~**Worker service** (`Dockerfile.worker`) also runs sync; if it is enabled,
   wrap its sync entrypoint in `withSyncAdvisoryLock` so it can't run a cycle
-  concurrently with the web cron.
+  concurrently with the web cron.~~ **Done** — `worker/sync-runner.ts` now runs
+  each cycle under `withSyncAdvisoryLock` (on the worker's own pool, see
+  `worker/prisma.ts` `getWorkerPool`). An overlapping cycle is skipped and
+  logged as `Sync cycle skipped — another sync cycle is already running`, so the
+  worker cron can no longer stack heavy cycles with the web cron or another
+  replica.
 - Consider `select`-projecting only the payload fields the calculators use, to
   cut per-row weight further (larger refactor — calculators read payloads deeply).
