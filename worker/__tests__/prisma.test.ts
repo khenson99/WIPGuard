@@ -83,6 +83,17 @@ describe('worker prisma', () => {
     expect(mockPoolEnd).toHaveBeenCalledOnce();
   });
 
+  it('getWorkerPool returns the pool backing the worker Prisma client', async () => {
+    const { getWorkerPrisma, getWorkerPool } = await import('../prisma');
+    getWorkerPrisma();
+    const pool = getWorkerPool();
+    expect(pool).toBeTruthy();
+    // Initializing the pool lazily must not create a second pool.
+    expect(mockPoolCtor).toHaveBeenCalledOnce();
+    // Calling again returns the same pinned pool (needed for the advisory lock).
+    expect(getWorkerPool()).toBe(pool);
+  });
+
   it('throws if no DATABASE_URL is set', async () => {
     delete process.env.DATABASE_URL;
     delete process.env.WORKER_DATABASE_URL;
