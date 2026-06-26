@@ -69,6 +69,9 @@ function timeoutMsForRefreshJob(providerKey: string): number {
   // page sizes to fit the complexity cap, so it serially pages issues +
   // per-project issues and overran 10s ("Timed out after 10000ms").
   if (providerKey === "stripe" || providerKey === "linear") return 25_000;
+  // PostHog runs two HogQL queries against a high-volume events table, and
+  // "product" recomputes the full Imladris metric set; both can overrun 10s.
+  if (providerKey === "posthog" || providerKey === "product") return 25_000;
   return 10_000;
 }
 
