@@ -30,6 +30,14 @@ vi.mock("@/lib/imladris/metric-value-retention", () => ({
 }));
 
 vi.mock("@/lib/imladris/materialization", () => ({
+  IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS: [
+    "development",
+    "productActivation",
+    "finance",
+    "sales",
+    "marketing",
+    "customerSuccess",
+  ],
   materializeImladrisCanonicalMetrics: vi.fn(),
 }));
 
@@ -108,6 +116,7 @@ describe("runAnalyticsSync", () => {
 
   afterEach(() => {
     delete process.env.IMLADRIS_MATERIALIZATION_ENABLED;
+    delete process.env.IMLADRIS_MATERIALIZATION_DEPARTMENT_LIMIT;
     vi.useRealTimers();
   });
 
@@ -167,6 +176,61 @@ describe("runAnalyticsSync", () => {
         periodEnd: "2026-06-01T12:00:00.000Z",
         metricsCount: 1,
         metricKeys: ["development.delivery_health"],
+      },
+    ]);
+  });
+
+  it("limits Imladris materialization to a rotating department slice when configured", async () => {
+    process.env.IMLADRIS_MATERIALIZATION_DEPARTMENT_LIMIT = "1";
+    const prisma = createPrismaMock();
+
+    const result = await runAnalyticsSync({
+      prisma: prisma as never,
+    });
+
+    expect(materializeImladrisCanonicalMetrics).toHaveBeenCalledTimes(2);
+    expect(materializeImladrisCanonicalMetrics).toHaveBeenNthCalledWith(1, {
+      prisma,
+      context: {
+        userId: "user_1",
+        organizationId: "org_1",
+      },
+      periodStart: new Date("2026-05-02T12:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T12:00:00.000Z"),
+      now: new Date("2026-06-01T12:00:00.000Z"),
+      departments: ["development"],
+    });
+    expect(materializeImladrisCanonicalMetrics).toHaveBeenNthCalledWith(2, {
+      prisma,
+      context: {
+        userId: "user_2",
+        organizationId: null,
+      },
+      periodStart: new Date("2026-05-02T12:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T12:00:00.000Z"),
+      now: new Date("2026-06-01T12:00:00.000Z"),
+      departments: ["development"],
+    });
+    expect(result.imladris).toEqual([
+      {
+        userId: "user_1",
+        organizationId: "org_1",
+        periodStart: "2026-05-02T12:00:00.000Z",
+        periodEnd: "2026-06-01T12:00:00.000Z",
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
+        warning:
+          "Imladris materialization limited to 1 of 6 department families for this cron run (development); remaining families rotate through later runs.",
+      },
+      {
+        userId: "user_2",
+        organizationId: null,
+        periodStart: "2026-05-02T12:00:00.000Z",
+        periodEnd: "2026-06-01T12:00:00.000Z",
+        metricsCount: 1,
+        metricKeys: ["development.delivery_health"],
+        warning:
+          "Imladris materialization limited to 1 of 6 department families for this cron run (development); remaining families rotate through later runs.",
       },
     ]);
   });

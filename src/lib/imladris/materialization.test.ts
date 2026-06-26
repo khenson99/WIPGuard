@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationProvider } from "@/generated/prisma/client";
 import {
   capLineageRecordsPerSource,
+  materializeImladrisCanonicalMetrics,
   materializeImladrisCustomerSuccessMetrics,
   materializeImladrisDevelopmentMetrics,
   materializeImladrisFinanceMetrics,
@@ -759,6 +760,24 @@ describe("Imladris canonical materialization", () => {
       "raw_linear_2",
       "raw_github_1",
     ]);
+  });
+
+  it("materializes only requested canonical department families", async () => {
+    const prisma = createPrismaMock();
+
+    const results = await materializeImladrisCanonicalMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-06-01T00:00:00.000Z"),
+      now: new Date("2026-06-01T00:00:00.000Z"),
+      departments: ["development"],
+    });
+
+    expect(results.map((result) => result.metricKey)).toEqual([
+      "development.delivery_health",
+    ]);
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("materializes development delivery health from Linear, GitHub, and PostHog raw records", async () => {

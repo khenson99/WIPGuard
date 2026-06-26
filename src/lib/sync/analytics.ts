@@ -37,7 +37,9 @@ import {
   type PruneImladrisMetricValuesResult,
 } from '@/lib/imladris/metric-value-retention';
 import {
+  IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS,
   materializeImladrisCanonicalMetrics,
+  type ImladrisMaterializationDepartment,
   type MaterializedImladrisMetricResult,
 } from '@/lib/imladris/materialization';
 import { emitRetentionTelemetry } from './retention-telemetry';
@@ -88,6 +90,7 @@ export interface AnalyticsSyncResult {
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
 const IMLADRIS_MATERIALIZATION_WINDOW_DAYS = 30;
+const IMLADRIS_MATERIALIZATION_DEPARTMENT_BUCKET_MS = 10 * 60 * 1000;
 const IMLADRIS_MATERIALIZATION_DISABLED_WARNING =
   "Imladris materialization skipped by IMLADRIS_MATERIALIZATION_ENABLED=false.";
 
@@ -142,6 +145,57 @@ function daysBefore(date: Date, days: number): Date {
 function imladrisMaterializationEnabled(): boolean {
   const raw = process.env.IMLADRIS_MATERIALIZATION_ENABLED?.trim().toLowerCase();
   return raw !== "false" && raw !== "0" && raw !== "off";
+}
+
+function imladrisMaterializationRawBoundsConfigured(): boolean {
+  return Boolean(
+    process.env.IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE?.trim() ||
+      process.env.IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE?.trim(),
+  );
+}
+
+function parseImladrisMaterializationDepartmentLimit(): number {
+  const raw = process.env.IMLADRIS_MATERIALIZATION_DEPARTMENT_LIMIT?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.min(
+      Math.floor(parsed),
+      IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS.length,
+    );
+  }
+
+  return imladrisMaterializationRawBoundsConfigured()
+    ? 1
+    : IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS.length;
+}
+
+function selectImladrisMaterializationDepartments(
+  now: Date,
+): readonly ImladrisMaterializationDepartment[] {
+  const departmentLimit = parseImladrisMaterializationDepartmentLimit();
+  const departments = IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS;
+  if (departmentLimit >= departments.length) return departments;
+
+  const startIndex =
+    Math.floor(now.getTime() / IMLADRIS_MATERIALIZATION_DEPARTMENT_BUCKET_MS) %
+    departments.length;
+  return Array.from({ length: departmentLimit }, (_, offset) => (
+    departments[(startIndex + offset) % departments.length]
+  ));
+}
+
+function imladrisMaterializationDepartmentWarning(
+  departments: readonly ImladrisMaterializationDepartment[],
+): string | undefined {
+  const totalDepartments = IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS.length;
+  if (departments.length >= totalDepartments) return undefined;
+
+  return `Imladris materialization limited to ${departments.length} of ${totalDepartments} department families for this cron run (${departments.join(", ")}); remaining families rotate through later runs.`;
+}
+
+function joinWarnings(...warnings: Array<string | undefined>): string | undefined {
+  const presentWarnings = warnings.filter((warning): warning is string => Boolean(warning));
+  return presentWarnings.length > 0 ? presentWarnings.join(" ") : undefined;
 }
 
 async function loadImladrisMaterializationContexts(
@@ -210,6 +264,9 @@ async function runImladrisMaterializationSync(input: {
   );
   const periodEnd = input.now;
   const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
+  const departments = selectImladrisMaterializationDepartments(input.now);
+  const departmentWarning = imladrisMaterializationDepartmentWarning(departments);
+  const warning = joinWarnings(input.warning, departmentWarning);
 
   // Materialize users SEQUENTIALLY, not via Promise.all. Each user's
   // materialization loads large raw-record windows (see materialization.ts);
@@ -223,19 +280,21 @@ async function runImladrisMaterializationSync(input: {
       organizationId: context.organizationId,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
-      ...(input.warning ? { warning: input.warning } : {}),
+      ...(warning ? { warning } : {}),
     };
 
     try {
+      const materializationInput = {
+        prisma: input.prisma,
+        context,
+        periodStart,
+        periodEnd,
+        now: input.now,
+        ...(departmentWarning ? { departments } : {}),
+      };
       results.push({
         ...baseResult,
-        metrics: await materializeImladrisCanonicalMetrics({
-          prisma: input.prisma,
-          context,
-          periodStart,
-          periodEnd,
-          now: input.now,
-        }),
+        metrics: await materializeImladrisCanonicalMetrics(materializationInput),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
