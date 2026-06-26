@@ -9,6 +9,6 @@
   dockerfilePath = "Dockerfile.imladris-materialization"
 
 [deploy]
-  cronSchedule = "1,11,21,31,41,51 * * * *"
+  cronSchedule = "5,15,25,35,45,55 * * * *"
   restartPolicyType = "ON_FAILURE"
   restartPolicyMaxRetries = 1
