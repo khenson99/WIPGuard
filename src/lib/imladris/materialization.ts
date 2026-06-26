@@ -1328,10 +1328,68 @@ function materializationMaxRawRecordsPerSourceFromEnv(): number {
   });
 }
 
-function rawRecordInputCapWarning(maxPerSource: number): string {
-  return `Imladris materialization used the most recent ${maxPerSource} raw ${
-    maxPerSource === 1 ? "record" : "records"
-  } per source; older raw records were skipped to bound cron memory.`;
+function materializationRawBoundsConfigured(): boolean {
+  return Boolean(
+    process.env.IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE?.trim() ||
+      process.env.IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE?.trim(),
+  );
+}
+
+function rawRecordInputCapWarning(input: {
+  queryLimit: number;
+  maxPerSource: number;
+}): string {
+  return `Imladris materialization used bounded recent raw records (up to ${input.queryLimit} ${
+    input.queryLimit === 1 ? "row" : "rows"
+  } per provider query and ${input.maxPerSource} retained ${
+    input.maxPerSource === 1 ? "row" : "rows"
+  } per source); older raw records were skipped to bound cron memory.`;
+}
+
+function materializationProvidersFromWhere(where: Record<string, unknown>): IntegrationProvider[] {
+  const providerFilter = where.provider;
+  const providers = asRecord(providerFilter).in;
+  if (Array.isArray(providers)) {
+    return providers
+      .map(normalizeProvider)
+      .filter((provider): provider is IntegrationProvider => provider !== null);
+  }
+  const provider = normalizeProvider(providerFilter);
+  return provider ? [provider] : [];
+}
+
+function materializationWhereForProvider(
+  where: Record<string, unknown>,
+  provider: IntegrationProvider,
+): Record<string, unknown> {
+  return {
+    ...where,
+    provider,
+  };
+}
+
+function dedupeRawSourceRecords(
+  records: RawSourceRecordRow[],
+  context: ImladrisActorContext,
+  periodStart: Date,
+  periodEnd: Date,
+  asOf: Date,
+  recordAppliesToPeriod: RawRecordPeriodPredicate = (record, start, end) =>
+    rawRecordIsWithinPeriod(record, start, end),
+): RawSourceRecordRow[] {
+  const bestByObject = new Map<string, RawSourceRecordRow>();
+  for (const record of records) {
+    if (rawRecordScopeRank(record, context) === 0) continue;
+    const key = rawRecordDeduplicationKey(record);
+    const current = bestByObject.get(key);
+    if (!current || compareRawRecordPreference(current, record, context, asOf) > 0) {
+      bestByObject.set(key, record);
+    }
+  }
+  return [...bestByObject.values()].filter((record) =>
+    recordAppliesToPeriod(record, periodStart, periodEnd, asOf) &&
+    rawRecordIsObservableAsOf(record, asOf),
+  );
 }
 
 function pruneRawRecordAccumulator(input: {
@@ -1365,23 +1423,56 @@ async function loadMaterializationRawSourceRecords(input: {
 }): Promise<LoadedRawSourceRecords> {
   const pageSize = rawRecordBatchSizeFromEnv();
   const maxPerSource = materializationMaxRawRecordsPerSourceFromEnv();
+  const queryLimit = Math.min(pageSize, maxPerSource);
   const recordAppliesToPeriod =
     input.recordAppliesToPeriod ?? ((record, start, end) => rawRecordIsWithinPeriod(record, start, end));
-  const recordsByKey = new Map<string, RawSourceRecordRow>();
-  let cursorId: string | undefined;
-  let truncated = false;
 
-  for (;;) {
-    const page = await input.rawRecords.findMany({
+  if (!materializationRawBoundsConfigured()) {
+    const records = await input.rawRecords.findMany({
       where: input.where,
       select: RAW_SOURCE_RECORD_SELECT,
-      orderBy: [{ id: "asc" }],
-      take: pageSize,
-      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
     });
-    if (page.length === 0) break;
+    return {
+      records: dedupeRawSourceRecords(
+        records,
+        input.context,
+        input.periodStart,
+        input.periodEnd,
+        input.asOf,
+        recordAppliesToPeriod,
+      ),
+      warnings: [],
+    };
+  }
 
-    for (const record of page) {
+  const recordsByKey = new Map<string, RawSourceRecordRow>();
+  let truncated = false;
+  const providers = materializationProvidersFromWhere(input.where);
+  const queries =
+    providers.length > 0
+      ? providers.map((provider) => ({
+          provider,
+          where: materializationWhereForProvider(input.where, provider),
+        }))
+      : [{ provider: null, where: input.where }];
+
+  for (const query of queries) {
+    const records = await input.rawRecords.findMany({
+      where: query.where,
+      select: RAW_SOURCE_RECORD_SELECT,
+      orderBy: [
+        { occurredAt: "desc" },
+        { sourceUpdatedAt: "desc" },
+        { sourceCreatedAt: "desc" },
+        { id: "asc" },
+      ],
+      take: queryLimit,
+    });
+    if (records.length >= queryLimit) truncated = true;
+
+    for (const record of records) {
+      if (query.provider && !recordIsProvider(record, query.provider)) continue;
       if (rawRecordScopeRank(record, input.context) === 0) continue;
       if (!recordAppliesToPeriod(record, input.periodStart, input.periodEnd, input.asOf)) continue;
       if (!rawRecordIsObservableAsOf(record, input.asOf)) continue;
@@ -1396,8 +1487,6 @@ async function loadMaterializationRawSourceRecords(input: {
     truncated =
       pruneRawRecordAccumulator({ recordsByKey, asOf: input.asOf, maxPerSource }) ||
       truncated;
-    cursorId = page.at(-1)?.id;
-    if (page.length < pageSize || !cursorId) break;
   }
 
   truncated =
@@ -1406,7 +1495,7 @@ async function loadMaterializationRawSourceRecords(input: {
 
   return {
     records: [...recordsByKey.values()],
-    warnings: truncated ? [rawRecordInputCapWarning(maxPerSource)] : [],
+    warnings: truncated ? [rawRecordInputCapWarning({ queryLimit, maxPerSource })] : [],
   };
 }
 

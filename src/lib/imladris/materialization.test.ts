@@ -651,7 +651,7 @@ describe("Imladris canonical materialization", () => {
     vi.unstubAllEnvs();
   });
 
-  it("pages and caps raw source records before materializing metrics", async () => {
+  it("queries bounded recent raw source slices before materializing metrics", async () => {
     vi.stubEnv("IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE", "2");
     vi.stubEnv("IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE", "1");
     const prisma = createPrismaMock();
@@ -702,10 +702,13 @@ describe("Imladris canonical materialization", () => {
         },
       },
     ] satisfies RawSourceRecordFixture[];
-    prisma.imladrisRawSourceRecord.findMany
-      .mockResolvedValueOnce(rawRows.slice(0, 2))
-      .mockResolvedValueOnce(rawRows.slice(2))
-      .mockResolvedValueOnce([]);
+    prisma.imladrisRawSourceRecord.findMany.mockImplementation((async (args: Record<string, unknown>) => {
+      const where = args.where as { provider?: IntegrationProvider };
+      if (where.provider === IntegrationProvider.LINEAR) return [rawRows[1]];
+      if (where.provider === IntegrationProvider.GITHUB) return [rawRows[2]];
+      if (where.provider === IntegrationProvider.POSTHOG) return [];
+      return [];
+    }) as never);
 
     await materializeImladrisDevelopmentMetrics({
       prisma: prisma as never,
@@ -715,27 +718,39 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledTimes(3);
     expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        take: 2,
-        orderBy: [{ id: "asc" }],
+        where: expect.objectContaining({ provider: IntegrationProvider.LINEAR }),
+        take: 1,
+        orderBy: [
+          { occurredAt: "desc" },
+          { sourceUpdatedAt: "desc" },
+          { sourceCreatedAt: "desc" },
+          { id: "asc" },
+        ],
       }),
     );
     expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        cursor: { id: "raw_linear_2" },
-        skip: 1,
-        take: 2,
+        where: expect.objectContaining({ provider: IntegrationProvider.GITHUB }),
+        take: 1,
       }),
     );
+    const findManyCalls = prisma.imladrisRawSourceRecord.findMany.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    for (const call of findManyCalls) {
+      expect(call[0]).not.toHaveProperty("cursor");
+      expect(call[0]).not.toHaveProperty("skip");
+    }
     const upsertArgs = prisma.imladrisCanonicalMetricValue.upsert.mock.calls[0][0] as {
       create: { warnings: string[] };
     };
     expect(upsertArgs.create.warnings).toContain(
-      "Imladris materialization used the most recent 1 raw record per source; older raw records were skipped to bound cron memory.",
+      "Imladris materialization used bounded recent raw records (up to 1 row per provider query and 1 retained row per source); older raw records were skipped to bound cron memory.",
     );
     const lineageArgs = prisma.imladrisMetricLineage.createMany.mock.calls[0][0] as {
       data: Array<{ rawRecordId: string }>;
