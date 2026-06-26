@@ -17,6 +17,7 @@
     "retention:materialize": "npx tsx scripts/retention/materialize-current.ts",
     "retention:gaps": "npx tsx scripts/retention/export-gaps.ts",
     "retention:run": "npx tsx scripts/retention/run-all.ts",
+    "imladris:materialize": "npx tsx worker/imladris-materialization-runner.ts",
     "ops:ads-preflight": "./scripts/ads-analytics-preflight.sh",
     "ops:backfill-google-oauth-scopes": "node ./scripts/backfill-google-oauth-scope-aliases.cjs",
     "prepare": "husky",

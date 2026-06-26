@@ -75,6 +75,7 @@ const DEFAULT_RAW_RECORD_BATCH_SIZE = 500;
 const MAX_RAW_RECORD_BATCH_SIZE = 5_000;
 const DEFAULT_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE = 1_000;
 const MAX_MATERIALIZATION_RAW_RECORDS_PER_SOURCE = 10_000;
+const MAX_MATERIALIZATION_RAW_RECORDS_TOTAL = 10_000;
 export const IMLADRIS_CANONICAL_MATERIALIZATION_DEPARTMENTS = [
   "development",
   "productActivation",
@@ -1339,22 +1340,51 @@ function materializationMaxRawRecordsPerSourceFromEnv(): number {
   });
 }
 
+function optionalPositiveIntegerEnv(input: {
+  name: string;
+  maxValue: number;
+}): number | null {
+  const raw = process.env[input.name]?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) return null;
+  return Math.min(Math.floor(parsed), input.maxValue);
+}
+
+function materializationMaxRawRecordsTotalFromEnv(): number | null {
+  return optionalPositiveIntegerEnv({
+    name: "IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_TOTAL",
+    maxValue: MAX_MATERIALIZATION_RAW_RECORDS_TOTAL,
+  });
+}
+
 function materializationRawBoundsConfigured(): boolean {
   return Boolean(
     process.env.IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE?.trim() ||
-      process.env.IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE?.trim(),
+      process.env.IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE?.trim() ||
+      process.env.IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_TOTAL?.trim(),
   );
 }
 
 function rawRecordInputCapWarning(input: {
   queryLimit: number;
   maxPerSource: number;
+  maxTotal: number | null;
 }): string {
+  if (!input.maxTotal) {
+    return `Imladris materialization used bounded recent raw records (up to ${input.queryLimit} ${
+      input.queryLimit === 1 ? "row" : "rows"
+    } per provider query and ${input.maxPerSource} retained ${
+      input.maxPerSource === 1 ? "row" : "rows"
+    } per source); older raw records were skipped to bound cron memory.`;
+  }
+
   return `Imladris materialization used bounded recent raw records (up to ${input.queryLimit} ${
     input.queryLimit === 1 ? "row" : "rows"
-  } per provider query and ${input.maxPerSource} retained ${
+  } per provider query, ${input.maxPerSource} retained ${
     input.maxPerSource === 1 ? "row" : "rows"
-  } per source); older raw records were skipped to bound cron memory.`;
+  } per source, and ${input.maxTotal} total ${
+    input.maxTotal === 1 ? "row" : "rows"
+  } per materialization); older raw records were skipped to bound worker memory.`;
 }
 
 function materializationProvidersFromWhere(where: Record<string, unknown>): IntegrationProvider[] {
@@ -1435,6 +1465,7 @@ async function loadMaterializationRawSourceRecords(input: {
   const pageSize = rawRecordBatchSizeFromEnv();
   const maxPerSource = materializationMaxRawRecordsPerSourceFromEnv();
   const queryLimit = Math.min(pageSize, maxPerSource);
+  const maxTotal = materializationMaxRawRecordsTotalFromEnv();
   const recordAppliesToPeriod =
     input.recordAppliesToPeriod ?? ((record, start, end) => rawRecordIsWithinPeriod(record, start, end));
 
@@ -1469,6 +1500,12 @@ async function loadMaterializationRawSourceRecords(input: {
       : [{ provider: null, where: input.where }];
 
   for (const query of queries) {
+    const remainingRecordBudget = maxTotal ? maxTotal - recordsByKey.size : queryLimit;
+    if (remainingRecordBudget <= 0) {
+      truncated = true;
+      break;
+    }
+    const take = Math.min(queryLimit, remainingRecordBudget);
     const records = await input.rawRecords.findMany({
       where: query.where,
       select: RAW_SOURCE_RECORD_SELECT,
@@ -1478,9 +1515,9 @@ async function loadMaterializationRawSourceRecords(input: {
         { sourceCreatedAt: "desc" },
         { id: "asc" },
       ],
-      take: queryLimit,
+      take,
     });
-    if (records.length >= queryLimit) truncated = true;
+    if (records.length >= take) truncated = true;
 
     for (const record of records) {
       if (query.provider && !recordIsProvider(record, query.provider)) continue;
@@ -1498,6 +1535,10 @@ async function loadMaterializationRawSourceRecords(input: {
     truncated =
       pruneRawRecordAccumulator({ recordsByKey, asOf: input.asOf, maxPerSource }) ||
       truncated;
+    if (maxTotal && recordsByKey.size >= maxTotal) {
+      truncated = true;
+      break;
+    }
   }
 
   truncated =
@@ -1506,7 +1547,7 @@ async function loadMaterializationRawSourceRecords(input: {
 
   return {
     records: [...recordsByKey.values()],
-    warnings: truncated ? [rawRecordInputCapWarning({ queryLimit, maxPerSource })] : [],
+    warnings: truncated ? [rawRecordInputCapWarning({ queryLimit, maxPerSource, maxTotal })] : [],
   };
 }
 

@@ -1,0 +1,36 @@
+# One-shot Imladris materialization worker.
+#
+# This intentionally does not run the Next.js server. Railway should run it as
+# a cron service so materialization heap spikes are isolated from WIPGuard-app.
+
+FROM node:20-alpine AS base
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM base AS build
+WORKDIR /app
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY worker ./worker
+COPY src ./src
+COPY tsconfig.json ./
+
+FROM base AS runtime
+WORKDIR /app
+
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/worker ./worker
+COPY --from=build /app/src ./src
+COPY --from=build /app/tsconfig.json ./
+
+ENV IMLADRIS_MATERIALIZATION_NODE_MAX_OLD_SPACE_MB=512
+ENV IMLADRIS_MATERIALIZATION_DEPARTMENT_LIMIT=1
+ENV IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE=50
+ENV IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE=50
+ENV IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_TOTAL=100
+
+CMD ["sh", "-lc", "node --max-old-space-size=${IMLADRIS_MATERIALIZATION_NODE_MAX_OLD_SPACE_MB:-512} node_modules/.bin/tsx worker/imladris-materialization-runner.ts"]

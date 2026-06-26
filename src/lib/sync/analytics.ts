@@ -93,6 +93,8 @@ const IMLADRIS_MATERIALIZATION_WINDOW_DAYS = 30;
 const IMLADRIS_MATERIALIZATION_DEPARTMENT_BUCKET_MS = 10 * 60 * 1000;
 const IMLADRIS_MATERIALIZATION_DISABLED_WARNING =
   "Imladris materialization skipped by IMLADRIS_MATERIALIZATION_ENABLED=false.";
+const IMLADRIS_MATERIALIZATION_WORKER_WARNING =
+  "Imladris materialization skipped in web cron because IMLADRIS_MATERIALIZATION_EXECUTION=worker; standalone worker owns canonical materialization.";
 
 interface UserOrganizationRow {
   id: string;
@@ -145,6 +147,11 @@ function daysBefore(date: Date, days: number): Date {
 function imladrisMaterializationEnabled(): boolean {
   const raw = process.env.IMLADRIS_MATERIALIZATION_ENABLED?.trim().toLowerCase();
   return raw !== "false" && raw !== "0" && raw !== "off";
+}
+
+function imladrisMaterializationHandledExternally(): boolean {
+  const raw = process.env.IMLADRIS_MATERIALIZATION_EXECUTION?.trim().toLowerCase();
+  return raw === "worker" || raw === "external" || raw === "standalone";
 }
 
 function imladrisMaterializationRawBoundsConfigured(): boolean {
@@ -317,6 +324,7 @@ async function skipImladrisMaterializationSync(input: {
   prisma: PrismaClientType;
   userIds: string[];
   now: Date;
+  warning?: string;
 }): Promise<ImladrisMaterializationSyncResult[]> {
   const contexts = await loadImladrisMaterializationContexts(
     input.prisma,
@@ -331,7 +339,7 @@ async function skipImladrisMaterializationSync(input: {
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
     metrics: [],
-    warning: IMLADRIS_MATERIALIZATION_DISABLED_WARNING,
+    warning: input.warning ?? IMLADRIS_MATERIALIZATION_DISABLED_WARNING,
   }));
 }
 
@@ -378,18 +386,28 @@ export async function runAnalyticsSync(
   // memory, and pruning can also hold large query buffers; sequencing keeps
   // peak cron-sync heap bounded to one phase at a time.
   const pruning = await pruneAnalyticsSnapshots({ olderThanDays });
-  const imladris = imladrisMaterializationEnabled()
-    ? await runImladrisMaterializationSync({
-        prisma: input.prisma,
-        userIds,
-        now,
-        warning: materializationWarning,
-      })
-    : await skipImladrisMaterializationSync({
-        prisma: input.prisma,
-        userIds,
-        now,
-      });
+  let imladris: ImladrisMaterializationSyncResult[];
+  if (!imladrisMaterializationEnabled()) {
+    imladris = await skipImladrisMaterializationSync({
+      prisma: input.prisma,
+      userIds,
+      now,
+    });
+  } else if (imladrisMaterializationHandledExternally()) {
+    imladris = await skipImladrisMaterializationSync({
+      prisma: input.prisma,
+      userIds,
+      now,
+      warning: IMLADRIS_MATERIALIZATION_WORKER_WARNING,
+    });
+  } else {
+    imladris = await runImladrisMaterializationSync({
+      prisma: input.prisma,
+      userIds,
+      now,
+      warning: materializationWarning,
+    });
+  }
 
   // Growth-control retention for the two unbounded tables (lineage detail of
   // superseded metric values; terminal outbox events). Runs after

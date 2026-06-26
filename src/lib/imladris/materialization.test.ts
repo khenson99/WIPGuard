@@ -652,6 +652,67 @@ describe("Imladris canonical materialization", () => {
     vi.unstubAllEnvs();
   });
 
+  it("stops provider fan-out when the total raw record cap is reached", async () => {
+    vi.stubEnv("IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE", "2");
+    vi.stubEnv("IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE", "10");
+    vi.stubEnv("IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_TOTAL", "2");
+    const prisma = createPrismaMock();
+    prisma.imladrisRawSourceRecord.findMany.mockResolvedValueOnce([
+      {
+        id: "raw_linear_1",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-1",
+        occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+        payload: {
+          id: "LIN-1",
+          state: { type: "completed" },
+          createdAt: "2026-05-10T10:00:00.000Z",
+          completedAt: "2026-05-15T10:00:00.000Z",
+        },
+      },
+      {
+        id: "raw_linear_2",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-2",
+        occurredAt: new Date("2026-05-20T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-20T10:00:00.000Z"),
+        payload: {
+          id: "LIN-2",
+          state: { type: "completed" },
+          createdAt: "2026-05-16T10:00:00.000Z",
+          completedAt: "2026-05-20T10:00:00.000Z",
+        },
+      },
+    ] as never);
+
+    await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ provider: IntegrationProvider.LINEAR }),
+        take: 2,
+      }),
+    );
+    const upsertArgs = prisma.imladrisCanonicalMetricValue.upsert.mock.calls[0][0] as {
+      create: { warnings: string[] };
+    };
+    expect(upsertArgs.create.warnings).toContain(
+      "Imladris materialization used bounded recent raw records (up to 2 rows per provider query, 10 retained rows per source, and 2 total rows per materialization); older raw records were skipped to bound worker memory.",
+    );
+  });
+
   it("queries bounded recent raw source slices before materializing metrics", async () => {
     vi.stubEnv("IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE", "2");
     vi.stubEnv("IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE", "1");

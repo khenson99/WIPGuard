@@ -116,6 +116,7 @@ describe("runAnalyticsSync", () => {
 
   afterEach(() => {
     delete process.env.IMLADRIS_MATERIALIZATION_ENABLED;
+    delete process.env.IMLADRIS_MATERIALIZATION_EXECUTION;
     delete process.env.IMLADRIS_MATERIALIZATION_DEPARTMENT_LIMIT;
     vi.useRealTimers();
   });
@@ -455,6 +456,31 @@ describe("runAnalyticsSync", () => {
         metricKeys: [],
         warning:
           "Imladris materialization skipped by IMLADRIS_MATERIALIZATION_ENABLED=false.",
+      },
+    ]);
+  });
+
+  it("skips inline Imladris materialization when a worker process owns it", async () => {
+    process.env.IMLADRIS_MATERIALIZATION_ENABLED = "true";
+    process.env.IMLADRIS_MATERIALIZATION_EXECUTION = "worker";
+    const prisma = createPrismaMock();
+
+    const result = await runAnalyticsSync({
+      prisma: prisma as never,
+      userIds: ["user_1"],
+    });
+
+    expect(materializeImladrisCanonicalMetrics).not.toHaveBeenCalled();
+    expect(result.imladris).toEqual([
+      {
+        userId: "user_1",
+        organizationId: "org_1",
+        periodStart: "2026-05-02T12:00:00.000Z",
+        periodEnd: "2026-06-01T12:00:00.000Z",
+        metricsCount: 0,
+        metricKeys: [],
+        warning:
+          "Imladris materialization skipped in web cron because IMLADRIS_MATERIALIZATION_EXECUTION=worker; standalone worker owns canonical materialization.",
       },
     ]);
   });
