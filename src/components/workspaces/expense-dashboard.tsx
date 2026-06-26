@@ -174,6 +174,65 @@ function KpiCards({ data }: { data: ExpenseDashboardData }) {
   );
 }
 
+function titleCase(value: string): string {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function BoardBurnContext({ data }: { data: ExpenseDashboardData }) {
+  const total = totalSpend(data);
+  const categories = sortedCategories(data);
+  const vendors = sortedVendors(data);
+  const primaryCategory = categories[0] ?? null;
+  const topVendor = vendors[0] ?? null;
+  const recentNet = data.chartSeries.netBurn.map(numericValue).slice(-3);
+  const avgNet = recentNet.length ? recentNet.reduce((sum, value) => sum + value, 0) / recentNet.length : 0;
+  const cash = numericValue(data.chartSeries.runwayCash ?? 0);
+  const runway = avgNet > 0 ? cash / avgNet : 0;
+  const runwayHealthy = runway >= 9;
+
+  return (
+    <section className="expense-board-context expense-section" aria-label="Board burn context">
+      <div className="expense-section-title">Board Burn Context</div>
+      <div className="expense-grid expense-g4">
+        <div className="expense-card">
+          <div className="expense-card-label">Primary burn driver</div>
+          <div className="expense-card-value expense-yellow">
+            {primaryCategory ? titleCase(primaryCategory) : "Missing"}
+          </div>
+          <div className="expense-card-sub">
+            {primaryCategory
+              ? `${fmt(data.categoryTotals[primaryCategory])} · ${pct(data.categoryTotals[primaryCategory], total)}`
+              : "No category spend"}
+          </div>
+        </div>
+        <div className="expense-card">
+          <div className="expense-card-label">Vendor concentration</div>
+          <div className="expense-card-value expense-yellow">
+            {topVendor ? pct(data.vendorTotals[topVendor], total) : "0%"}
+          </div>
+          <div className="expense-card-sub">{topVendor ?? "No vendor spend"}</div>
+        </div>
+        <div className="expense-card">
+          <div className="expense-card-label">Recent net burn</div>
+          <div className="expense-card-value expense-yellow">{fmt(avgNet)}/mo</div>
+          <div className="expense-card-sub">3-month average from Mercury cashflow.</div>
+        </div>
+        <div className="expense-card">
+          <div className="expense-card-label">Runway bridge</div>
+          <div className={`expense-card-value ${runwayHealthy ? "expense-green" : "expense-yellow"}`}>
+            {runway > 0 ? `${runway.toFixed(1)} mo` : "Missing"}
+          </div>
+          <div className="expense-card-sub">Cash {fmt(cash)} at recent burn.</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DetailTable({
   title,
   transactions,
@@ -856,6 +915,8 @@ export function ExpenseDashboard({ initialData }: { initialData: ExpenseDashboar
             <div className="expense-alert-detail">April net burn was $295,306, driven by $174K Pillsbury Winthrop legal fees (financing close). 3-mo avg burn rose to $176,465/mo (was $113,807). Runway at 3-mo avg: 14.5 months. Determine if April legal cost is one-time before treating this as the new baseline.</div>
           </div>
         </div>
+
+        <BoardBurnContext data={data} />
 
         <KpiCards data={data} />
 
