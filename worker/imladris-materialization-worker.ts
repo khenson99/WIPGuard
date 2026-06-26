@@ -2,8 +2,8 @@ import {
   runImladrisMaterializationJob,
   type ImladrisMaterializationJobResult,
 } from "@/lib/imladris/materialization-job";
+import { withImladrisMaterializationAdvisoryLock } from "@/lib/imladris/materialization-lock";
 import type { PrismaClientType } from "@/lib/prisma";
-import { withSyncAdvisoryLock } from "@/lib/sync/sync-lock";
 import { getWorkerPool, getWorkerPrisma } from "./prisma";
 
 export type ImladrisMaterializationWorkerResult =
@@ -18,7 +18,7 @@ export type ImladrisMaterializationWorkerResult =
 
 export async function runImladrisMaterializationWorkerOnce(): Promise<ImladrisMaterializationWorkerResult> {
   const prisma = getWorkerPrisma() as unknown as PrismaClientType;
-  const outcome = await withSyncAdvisoryLock(
+  const outcome = await withImladrisMaterializationAdvisoryLock(
     () => runImladrisMaterializationJob({ prisma }),
     { pool: getWorkerPool() },
   );

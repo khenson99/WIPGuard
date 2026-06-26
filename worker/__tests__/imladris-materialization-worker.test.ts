@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runImladrisMaterializationJob } from "@/lib/imladris/materialization-job";
-import { withSyncAdvisoryLock } from "@/lib/sync/sync-lock";
+import { withImladrisMaterializationAdvisoryLock } from "@/lib/imladris/materialization-lock";
 import { getWorkerPool, getWorkerPrisma } from "../prisma";
 import { runImladrisMaterializationWorkerOnce } from "../imladris-materialization-worker";
 
@@ -8,8 +8,8 @@ vi.mock("@/lib/imladris/materialization-job", () => ({
   runImladrisMaterializationJob: vi.fn(),
 }));
 
-vi.mock("@/lib/sync/sync-lock", () => ({
-  withSyncAdvisoryLock: vi.fn(),
+vi.mock("@/lib/imladris/materialization-lock", () => ({
+  withImladrisMaterializationAdvisoryLock: vi.fn(),
 }));
 
 vi.mock("../prisma", () => ({
@@ -36,17 +36,18 @@ describe("runImladrisMaterializationWorkerOnce", () => {
     } as never);
   });
 
-  it("runs the materialization job under the global sync advisory lock", async () => {
-    vi.mocked(withSyncAdvisoryLock).mockImplementation(async (fn) => ({
+  it("runs the materialization job under the materialization advisory lock", async () => {
+    vi.mocked(withImladrisMaterializationAdvisoryLock).mockImplementation(async (fn) => ({
       ran: true,
       result: await fn(),
     }) as never);
 
     const result = await runImladrisMaterializationWorkerOnce();
 
-    expect(withSyncAdvisoryLock).toHaveBeenCalledWith(expect.any(Function), {
-      pool: { marker: "pool" },
-    });
+    expect(withImladrisMaterializationAdvisoryLock).toHaveBeenCalledWith(
+      expect.any(Function),
+      { pool: { marker: "pool" } },
+    );
     expect(runImladrisMaterializationJob).toHaveBeenCalledWith({
       prisma: { marker: "prisma" },
     });
@@ -60,9 +61,9 @@ describe("runImladrisMaterializationWorkerOnce", () => {
   });
 
   it("reports a lock skip without running materialization", async () => {
-    vi.mocked(withSyncAdvisoryLock).mockResolvedValue({
+    vi.mocked(withImladrisMaterializationAdvisoryLock).mockResolvedValue({
       ran: false,
-      reason: "another sync cycle is already running",
+      reason: "another Imladris materialization is already running",
     } as never);
 
     const result = await runImladrisMaterializationWorkerOnce();
@@ -70,7 +71,7 @@ describe("runImladrisMaterializationWorkerOnce", () => {
     expect(runImladrisMaterializationJob).not.toHaveBeenCalled();
     expect(result).toEqual({
       skipped: true,
-      reason: "another sync cycle is already running",
+      reason: "another Imladris materialization is already running",
     });
   });
 });
