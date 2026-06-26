@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -14,6 +17,25 @@ import type {
   CustomerHealthSourceCoverage,
 } from "@/lib/retention/customer-health-dashboard";
 import { parseImladrisNumber } from "@/lib/imladris/number-parsing";
+
+const HEALTH_STATUS_FILTERS = [
+  "At Risk",
+  "Onboarding Risk",
+  "Billing Risk",
+  "Watch",
+  "Healthy",
+] satisfies CustomerHealthAccountRow["status"][];
+
+const MISSING_SOURCE_FILTERS = [
+  { id: "arda", label: "Missing ARDA" },
+  { id: "coda", label: "Missing Coda" },
+  { id: "stripe", label: "Missing Stripe" },
+  { id: "hubspot", label: "Missing HubSpot" },
+  { id: "pylon", label: "Missing Pylon" },
+] as const;
+
+type HealthStatusFilter = "all" | CustomerHealthAccountRow["status"];
+type MissingSourceFilter = "all" | (typeof MISSING_SOURCE_FILTERS)[number]["id"];
 
 function scalarValue(value: unknown, seen = new WeakSet<object>()): unknown {
   if (value === null || value === undefined) return value;
@@ -223,7 +245,33 @@ function AccountRow({ account }: { account: CustomerHealthAccountRow }) {
   );
 }
 
+function FilterButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? "rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground"
+          : "rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
 export function CustomerHealthDashboard({ data }: { data: CustomerHealthDashboardData }) {
+  const [statusFilter, setStatusFilter] = useState<HealthStatusFilter>("all");
+  const [missingSourceFilter, setMissingSourceFilter] = useState<MissingSourceFilter>("all");
   const lirPct =
     data.totals.totalAccounts > 0
       ? (data.totals.lirPassingAccounts / data.totals.totalAccounts) * 100
@@ -233,6 +281,13 @@ export function CustomerHealthDashboard({ data }: { data: CustomerHealthDashboar
     ...data.riskQueues.onboardingRisk,
     ...data.riskQueues.billingRisk,
   ].slice(0, 6);
+  const filteredAccounts = data.accounts.filter((account) => {
+    const statusMatches = statusFilter === "all" || account.status === statusFilter;
+    const sourceMatches =
+      missingSourceFilter === "all" ||
+      account.coverage.missingSources.includes(missingSourceFilter);
+    return statusMatches && sourceMatches;
+  });
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -371,7 +426,40 @@ export function CustomerHealthDashboard({ data }: { data: CustomerHealthDashboar
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-foreground">Account Health</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Board Customer Risk</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Filter the account table to isolate investor-visible risk by status or missing evidence.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <FilterButton
+                active={statusFilter === "all"}
+                label="All Statuses"
+                onClick={() => setStatusFilter("all")}
+              />
+              {HEALTH_STATUS_FILTERS.map((status) => (
+                <FilterButton
+                  key={status}
+                  active={statusFilter === status}
+                  label={status}
+                  onClick={() => setStatusFilter(status)}
+                />
+              ))}
+              <FilterButton
+                active={missingSourceFilter === "all"}
+                label="All Sources"
+                onClick={() => setMissingSourceFilter("all")}
+              />
+              {MISSING_SOURCE_FILTERS.map((source) => (
+                <FilterButton
+                  key={source.id}
+                  active={missingSourceFilter === source.id}
+                  label={source.label}
+                  onClick={() => setMissingSourceFilter(source.id)}
+                />
+              ))}
+            </div>
             <div className="flex flex-wrap gap-2 text-xs">
               {data.healthStatusBreakdown.map((entry) => (
                 <span
@@ -397,11 +485,16 @@ export function CustomerHealthDashboard({ data }: { data: CustomerHealthDashboar
                   </tr>
                 </thead>
                 <tbody>
-                  {data.accounts.map((account) => (
+                  {filteredAccounts.map((account) => (
                     <AccountRow key={account.accountId} account={account} />
                   ))}
                 </tbody>
               </table>
+              {filteredAccounts.length === 0 ? (
+                <div className="border-t border-border p-4 text-sm text-muted-foreground">
+                  No accounts match the selected board risk filters.
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">

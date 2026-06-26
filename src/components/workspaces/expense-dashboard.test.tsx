@@ -92,11 +92,34 @@ describe("ExpenseDashboard", () => {
     expect(screen.getByRole("heading", { name: "Arda Financial Dashboard" })).toBeTruthy();
     expect(screen.getByText(/Mercury Data \(Cash Basis\)/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Refresh data" })).toBeTruthy();
+    expect(screen.getByText("Board Burn Context")).toBeTruthy();
+    expect(screen.getByText("Primary burn driver")).toBeTruthy();
+    expect(screen.getByText("Payroll")).toBeTruthy();
+    expect(screen.getByText("Vendor concentration")).toBeTruthy();
     ["Overview", "Category x Month", "Categories", "Vendors", "Runway", "Recommendations"].forEach((label) => {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     });
     expect(screen.getByText("Monthly Operating Cash Flows")).toBeTruthy();
     expect(screen.getByText("Spend by Category (6 Months)")).toBeTruthy();
+  });
+
+  it("uses watch coloring for sub-target board runway", () => {
+    render(
+      <ExpenseDashboard
+        initialData={{
+          ...DATA,
+          chartSeries: {
+            ...DATA.chartSeries,
+            netBurn: [160_000, 165_000, 170_000],
+            runwayCash: 200_000,
+          },
+        }}
+      />,
+    );
+
+    const runwayValue = screen.getByText("1.2 mo");
+    expect(runwayValue.className).toContain("expense-yellow");
+    expect(runwayValue.className).not.toContain("expense-green");
   });
 
   it("switches tabs and expands category drilldowns", async () => {

@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CustomerHealthDashboard } from "./customer-health-dashboard";
 import type { CustomerHealthDashboardData } from "@/lib/retention/customer-health-dashboard";
@@ -115,6 +116,101 @@ const DATA: CustomerHealthDashboardData = {
       },
       lastMaterializedAt: "2026-03-15T00:00:00.000Z",
     },
+    {
+      accountId: "cust_2",
+      name: "Tenant Two",
+      status: "At Risk",
+      lifecyclePhase: "MATURE",
+      primaryLirPassed: false,
+      primaryLirLabel: "Active weeks trailing 8",
+      primaryLirValue: 2,
+      primaryLirThreshold: 5,
+      currentMonthActivity: 3,
+      trendVsPriorPct: -42,
+      supportRisk: true,
+      billingRisk: false,
+      onboardingRisk: false,
+      ownerName: "CS Owner",
+      segment: "SMB",
+      plan: "Starter",
+      ageBucket: "180d+",
+      reasonCodes: [
+        {
+          code: "usage_collapse",
+          label: "Current-month usage collapse",
+          detail: "Recent activity is materially below baseline.",
+          severity: "critical",
+          dimension: "usage",
+        },
+      ],
+      coverage: {
+        arda: true,
+        coda: false,
+        stripe: false,
+        hubspot: true,
+        pylon: true,
+        missingSources: ["coda", "stripe"],
+      },
+      lastMaterializedAt: "2026-03-15T00:00:00.000Z",
+    },
+    {
+      accountId: "cust_3",
+      name: "Tenant Three",
+      status: "Onboarding Risk",
+      lifecyclePhase: "ONBOARDING",
+      primaryLirPassed: false,
+      primaryLirLabel: "First order",
+      primaryLirValue: 0,
+      primaryLirThreshold: 1,
+      currentMonthActivity: 1,
+      trendVsPriorPct: -10,
+      supportRisk: false,
+      billingRisk: false,
+      onboardingRisk: true,
+      ownerName: "CS Owner",
+      segment: "SMB",
+      plan: "Starter",
+      ageBucket: "0-30d",
+      reasonCodes: [],
+      coverage: {
+        arda: false,
+        coda: true,
+        stripe: true,
+        hubspot: true,
+        pylon: true,
+        missingSources: ["arda"],
+      },
+      lastMaterializedAt: "2026-03-15T00:00:00.000Z",
+    },
+    {
+      accountId: "cust_4",
+      name: "Tenant Four",
+      status: "Billing Risk",
+      lifecyclePhase: "MATURE",
+      primaryLirPassed: false,
+      primaryLirLabel: "Payment current",
+      primaryLirValue: 0,
+      primaryLirThreshold: 1,
+      currentMonthActivity: 4,
+      trendVsPriorPct: -5,
+      supportRisk: false,
+      billingRisk: true,
+      onboardingRisk: false,
+      ownerName: "CS Owner",
+      segment: "Mid-market",
+      plan: "Growth",
+      ageBucket: "180d+",
+      reasonCodes: [],
+      coverage: {
+        arda: true,
+        coda: true,
+        stripe: true,
+        hubspot: false,
+        pylon: true,
+        missingSources: ["hubspot"],
+      },
+      lastMaterializedAt: "2026-03-15T00:00:00.000Z",
+    },
   ],
 };
 
@@ -134,9 +230,49 @@ describe("CustomerHealthDashboard", () => {
     expect(codaCoverage).toBeTruthy();
     expect(within(codaCoverage as HTMLElement).getByText("50.0%")).toBeTruthy();
     expect(screen.getByText("Needs Attention")).toBeTruthy();
-    expect(screen.getByText("Tenant Two")).toBeTruthy();
+    expect(screen.getAllByText("Tenant Two").length).toBeGreaterThan(0);
     expect(screen.getByText("Current-month usage collapse")).toBeTruthy();
     expect(screen.getByText("Tenant One")).toBeTruthy();
+  });
+
+  it("filters the board risk table by customer status and missing source", async () => {
+    const user = userEvent.setup();
+    render(<CustomerHealthDashboard data={DATA} />);
+
+    expect(screen.getByText("Board Customer Risk")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "At Risk" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Onboarding Risk" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Billing Risk" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Missing ARDA" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Missing Coda" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Missing HubSpot" })).toBeTruthy();
+    const accountTable = screen.getByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "At Risk" }));
+    expect(within(accountTable).getByText("Tenant Two")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant One")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Missing Coda" }));
+    expect(within(accountTable).getByText("Tenant Two")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant One")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "All Sources" }));
+    await user.click(screen.getByRole("button", { name: "Onboarding Risk" }));
+    expect(within(accountTable).getByText("Tenant Three")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant Two")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Missing ARDA" }));
+    expect(within(accountTable).getByText("Tenant Three")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant Four")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "All Sources" }));
+    await user.click(screen.getByRole("button", { name: "Billing Risk" }));
+    expect(within(accountTable).getByText("Tenant Four")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant Three")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Missing HubSpot" }));
+    expect(within(accountTable).getByText("Tenant Four")).toBeTruthy();
+    expect(within(accountTable).queryByText("Tenant Three")).toBeNull();
   });
 
   it("renders an empty state when no accounts have materialized health", () => {
