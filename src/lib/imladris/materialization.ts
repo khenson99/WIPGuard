@@ -71,6 +71,23 @@ const INTEGRATION_PROVIDER_VALUES = new Set<string>(Object.values(IntegrationPro
 const FINANCE_STANDING_OBJECT_TYPES = imladrisObjectTypeQueryVariants(
   ...IMLADRIS_FINANCE_STANDING_BASE_OBJECT_TYPES,
 );
+const DEFAULT_RAW_RECORD_BATCH_SIZE = 500;
+const MAX_RAW_RECORD_BATCH_SIZE = 5_000;
+const DEFAULT_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE = 1_000;
+const MAX_MATERIALIZATION_RAW_RECORDS_PER_SOURCE = 10_000;
+const RAW_SOURCE_RECORD_SELECT = {
+  id: true,
+  provider: true,
+  objectType: true,
+  externalId: true,
+  scopeKey: true,
+  userId: true,
+  organizationId: true,
+  occurredAt: true,
+  sourceCreatedAt: true,
+  sourceUpdatedAt: true,
+  payload: true,
+} as const;
 
 interface ImladrisActorContext {
   userId: string | null;
@@ -1279,28 +1296,118 @@ type RawRecordPeriodPredicate = (
   asOf: Date,
 ) => boolean;
 
-function dedupeRawSourceRecords(
-  records: RawSourceRecordRow[],
-  context: ImladrisActorContext,
-  periodStart: Date,
-  periodEnd: Date,
-  asOf: Date,
-  recordAppliesToPeriod: RawRecordPeriodPredicate = (record, start, end) =>
-    rawRecordIsWithinPeriod(record, start, end),
-): RawSourceRecordRow[] {
-  const bestByObject = new Map<string, RawSourceRecordRow>();
-  for (const record of records) {
-    if (rawRecordScopeRank(record, context) === 0) continue;
-    const key = rawRecordDeduplicationKey(record);
-    const current = bestByObject.get(key);
-    if (!current || compareRawRecordPreference(current, record, context, asOf) > 0) {
-      bestByObject.set(key, record);
-    }
-  }
-  return [...bestByObject.values()].filter((record) =>
-    recordAppliesToPeriod(record, periodStart, periodEnd, asOf) &&
-    rawRecordIsObservableAsOf(record, asOf),
+interface LoadedRawSourceRecords {
+  records: RawSourceRecordRow[];
+  warnings: string[];
+}
+
+function positiveIntegerEnv(input: {
+  name: string;
+  defaultValue: number;
+  maxValue: number;
+}): number {
+  const raw = process.env[input.name]?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed) || parsed < 1) return input.defaultValue;
+  return Math.min(Math.floor(parsed), input.maxValue);
+}
+
+function rawRecordBatchSizeFromEnv(): number {
+  return positiveIntegerEnv({
+    name: "IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE",
+    defaultValue: DEFAULT_RAW_RECORD_BATCH_SIZE,
+    maxValue: MAX_RAW_RECORD_BATCH_SIZE,
+  });
+}
+
+function materializationMaxRawRecordsPerSourceFromEnv(): number {
+  return positiveIntegerEnv({
+    name: "IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE",
+    defaultValue: DEFAULT_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE,
+    maxValue: MAX_MATERIALIZATION_RAW_RECORDS_PER_SOURCE,
+  });
+}
+
+function rawRecordInputCapWarning(maxPerSource: number): string {
+  return `Imladris materialization used the most recent ${maxPerSource} raw ${
+    maxPerSource === 1 ? "record" : "records"
+  } per source; older raw records were skipped to bound cron memory.`;
+}
+
+function pruneRawRecordAccumulator(input: {
+  recordsByKey: Map<string, RawSourceRecordRow>;
+  asOf: Date;
+  maxPerSource: number;
+}): boolean {
+  const entries = [...input.recordsByKey.entries()];
+  const capped = capLineageRecordsPerSource(
+    entries.map(([, record]) => record),
+    input.asOf,
+    input.maxPerSource,
   );
+  if (capped.length === entries.length) return false;
+
+  const keptIds = new Set(capped.map((record) => record.id));
+  for (const [key, record] of entries) {
+    if (!keptIds.has(record.id)) input.recordsByKey.delete(key);
+  }
+  return true;
+}
+
+async function loadMaterializationRawSourceRecords(input: {
+  rawRecords: RawSourceRecordDelegate;
+  where: Record<string, unknown>;
+  context: ImladrisActorContext;
+  periodStart: Date;
+  periodEnd: Date;
+  asOf: Date;
+  recordAppliesToPeriod?: RawRecordPeriodPredicate;
+}): Promise<LoadedRawSourceRecords> {
+  const pageSize = rawRecordBatchSizeFromEnv();
+  const maxPerSource = materializationMaxRawRecordsPerSourceFromEnv();
+  const recordAppliesToPeriod =
+    input.recordAppliesToPeriod ?? ((record, start, end) => rawRecordIsWithinPeriod(record, start, end));
+  const recordsByKey = new Map<string, RawSourceRecordRow>();
+  let cursorId: string | undefined;
+  let truncated = false;
+
+  for (;;) {
+    const page = await input.rawRecords.findMany({
+      where: input.where,
+      select: RAW_SOURCE_RECORD_SELECT,
+      orderBy: [{ id: "asc" }],
+      take: pageSize,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+    });
+    if (page.length === 0) break;
+
+    for (const record of page) {
+      if (rawRecordScopeRank(record, input.context) === 0) continue;
+      if (!recordAppliesToPeriod(record, input.periodStart, input.periodEnd, input.asOf)) continue;
+      if (!rawRecordIsObservableAsOf(record, input.asOf)) continue;
+
+      const key = rawRecordDeduplicationKey(record);
+      const current = recordsByKey.get(key);
+      if (!current || compareRawRecordPreference(current, record, input.context, input.asOf) > 0) {
+        recordsByKey.set(key, record);
+      }
+    }
+
+    truncated =
+      pruneRawRecordAccumulator({ recordsByKey, asOf: input.asOf, maxPerSource }) ||
+      truncated;
+    cursorId = page.at(-1)?.id;
+    if (page.length < pageSize || !cursorId) break;
+  }
+
+  truncated =
+    pruneRawRecordAccumulator({ recordsByKey, asOf: input.asOf, maxPerSource }) ||
+    truncated;
+
+  return {
+    records: [...recordsByKey.values()],
+    warnings: truncated ? [rawRecordInputCapWarning(maxPerSource)] : [],
+  };
 }
 
 const DEFAULT_LINEAGE_MAX_ROWS_PER_SOURCE = 1_000;
@@ -1432,25 +1539,32 @@ export async function materializeImladrisDevelopmentMetrics(
     IntegrationProvider.GITHUB,
     IntegrationProvider.POSTHOG,
   ];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: providerWindowWhere({
       providers: requiredProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    context,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: now,
   });
-  const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
+  const records = rawWindow.records;
 
   const value = computeDeliveryHealth(records, now);
   const status = statusForProviderCoverage({ records, requiredProviders });
-  const warnings = providerCoverageWarning({
-    metricLabel: "Development Delivery Health",
-    records,
-    requiredProviders,
-    emptyWarning: "No Linear, GitHub, or PostHog raw records were available for this period.",
-  });
+  const warnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Development Delivery Health",
+      records,
+      requiredProviders,
+      emptyWarning: "No Linear, GitHub, or PostHog raw records were available for this period.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const metricValue = await canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -1598,16 +1712,20 @@ export async function materializeImladrisProductActivationMetric(
   const now = input.now ?? new Date();
 
   const requiredProviders = [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: providerWindowWhere({
       providers: requiredProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    context,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: now,
   });
-  const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
+  const records = rawWindow.records;
 
   const activationAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
   const value = computeActivationRate(records, activationAsOf);
@@ -1617,13 +1735,19 @@ export async function materializeImladrisProductActivationMetric(
       : ImladrisMetricStatus.MISSING;
   const warnings =
     value.eligibleAccounts > 0
-      ? providerCoverageWarning({
-          metricLabel: "Activation Rate",
-          records,
-          requiredProviders,
-          emptyWarning: "No HubSpot account cohort was available for activation-rate materialization.",
-        })
-      : ["No HubSpot account cohort was available for activation-rate materialization."];
+      ? [
+          ...providerCoverageWarning({
+            metricLabel: "Activation Rate",
+            records,
+            requiredProviders,
+            emptyWarning: "No HubSpot account cohort was available for activation-rate materialization.",
+          }),
+          ...rawWindow.warnings,
+        ]
+      : [
+          "No HubSpot account cohort was available for activation-rate materialization.",
+          ...rawWindow.warnings,
+        ];
   const metricValue = await canonicalMetrics.upsert({
     where: {
       organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -4015,33 +4139,34 @@ export async function materializeImladrisFinanceMetrics(
     IntegrationProvider.STRIPE,
     IntegrationProvider.HUBSPOT,
   ];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: financeWindowWhere({
       providers: requiredProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-  });
-  const records = dedupeRawSourceRecords(
-    queriedRecords,
     context,
-    input.periodStart,
-    input.periodEnd,
-    financeAsOf,
-    durableFinanceRecordAppliesToPeriod,
-  );
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: financeAsOf,
+    recordAppliesToPeriod: durableFinanceRecordAppliesToPeriod,
+  });
+  const records = rawWindow.records;
   const values = computeFinanceValues(records, financeAsOf);
   const confidence = confidenceFor(records);
   const status = statusForProviderCoverage({ records, requiredProviders });
-  const warnings = providerCoverageWarning({
-    metricLabel: "Finance metrics",
-    missingVerb: "are",
-    records,
-    requiredProviders,
-    emptyWarning: "No Mercury, Stripe, or HubSpot raw records were available for finance materialization.",
-  });
+  const warnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Finance metrics",
+      missingVerb: "are",
+      records,
+      requiredProviders,
+      emptyWarning: "No Mercury, Stripe, or HubSpot raw records were available for finance materialization.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const metricInputs = [
     {
       metricKey: "finance.net_burn",
@@ -4782,26 +4907,33 @@ export async function materializeImladrisSalesMetrics(
     ...qualifiedPipelineProviders,
     IntegrationProvider.WEBFLOW,
   ];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: providerWindowWhere({
       providers: queryProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    context,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: now,
   });
-  const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
+  const records = rawWindow.records;
   const salesAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
   const pipelineRecords = records.filter((record) => recordIsOneOfProviders(record, qualifiedPipelineProviders));
   const value = computeQualifiedPipeline(pipelineRecords, input.periodStart, salesAsOf);
   const status = statusForProviderCoverage({ records: pipelineRecords, requiredProviders: qualifiedPipelineProviders });
-  const warnings = providerCoverageWarning({
-    metricLabel: "Qualified Pipeline",
-    records: pipelineRecords,
-    requiredProviders: qualifiedPipelineProviders,
-    emptyWarning: "No HubSpot, Google Workspace, or Slack raw records were available for sales materialization.",
-  });
+  const warnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Qualified Pipeline",
+      records: pipelineRecords,
+      requiredProviders: qualifiedPipelineProviders,
+      emptyWarning: "No HubSpot, Google Workspace, or Slack raw records were available for sales materialization.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
     context,
@@ -4828,13 +4960,16 @@ export async function materializeImladrisSalesMetrics(
 
   const demos = computeSalesDemos(records, input.periodStart, salesAsOf);
   const demosStatus = statusForProviderCoverage({ records, requiredProviders: salesDemoProviders });
-  const demosWarnings = providerCoverageWarning({
-    metricLabel: "Demos",
-    missingVerb: "are",
-    records,
-    requiredProviders: salesDemoProviders,
-    emptyWarning: "No HubSpot, Google Workspace, or Webflow raw records were available for sales demos materialization.",
-  });
+  const demosWarnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Demos",
+      missingVerb: "are",
+      records,
+      requiredProviders: salesDemoProviders,
+      emptyWarning: "No HubSpot, Google Workspace, or Webflow raw records were available for sales demos materialization.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const demosMetricValue = await upsertCanonicalMetric({
     canonicalMetrics,
     context,
@@ -5937,25 +6072,32 @@ export async function materializeImladrisMarketingMetrics(
     IntegrationProvider.HUBSPOT,
   ];
   const queryProviders = [...requiredProviders, IntegrationProvider.META_PAGE, IntegrationProvider.POSTHOG];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: providerWindowWhere({
       providers: queryProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    context,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: now,
   });
-  const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
+  const records = rawWindow.records;
   const marketingAsOf = earlierDate(inclusivePeriodEnd(input.periodEnd), now);
   const value = computeMarketingPipelineEfficiency(records, input.periodStart, marketingAsOf);
   const status = statusForProviderCoverage({ records, requiredProviders });
-  const warnings = providerCoverageWarning({
-    metricLabel: "Pipeline Efficiency",
-    records,
-    requiredProviders,
-    emptyWarning: "No acquisition, traffic, visitor, or HubSpot raw records were available for marketing materialization.",
-  });
+  const warnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Pipeline Efficiency",
+      records,
+      requiredProviders,
+      emptyWarning: "No acquisition, traffic, visitor, or HubSpot raw records were available for marketing materialization.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
     context,
@@ -6878,25 +7020,32 @@ export async function materializeImladrisCustomerSuccessMetrics(
     IntegrationProvider.STRIPE,
   ];
   const queryProviders = [...requiredProviders, IntegrationProvider.HUBSPOT];
-  const queriedRecords = await rawRecords.findMany({
+  const rawWindow = await loadMaterializationRawSourceRecords({
+    rawRecords,
     where: providerWindowWhere({
       providers: queryProviders,
       context,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
     }),
-    orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
+    context,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    asOf: now,
   });
-  const records = dedupeRawSourceRecords(queriedRecords, context, input.periodStart, input.periodEnd, now);
+  const records = rawWindow.records;
   const value = computeRetentionRisk(records, input.periodStart, now);
   const confidence = confidenceFor(records);
   const status = statusForProviderCoverage({ records, requiredProviders });
-  const warnings = providerCoverageWarning({
-    metricLabel: "Retention Risk",
-    records,
-    requiredProviders,
-    emptyWarning: "No Pylon, PostHog, Slack, Google Workspace, or Stripe raw records were available for customer-success materialization.",
-  });
+  const warnings = [
+    ...providerCoverageWarning({
+      metricLabel: "Retention Risk",
+      records,
+      requiredProviders,
+      emptyWarning: "No Pylon, PostHog, Slack, Google Workspace, or Stripe raw records were available for customer-success materialization.",
+    }),
+    ...rawWindow.warnings,
+  ];
   const metricValue = await upsertCanonicalMetric({
     canonicalMetrics,
     context,

@@ -647,6 +647,105 @@ function createCustomerSuccessPrismaMock() {
 }
 
 describe("Imladris canonical materialization", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("pages and caps raw source records before materializing metrics", async () => {
+    vi.stubEnv("IMLADRIS_MATERIALIZATION_RAW_BATCH_SIZE", "2");
+    vi.stubEnv("IMLADRIS_MATERIALIZATION_MAX_RAW_RECORDS_PER_SOURCE", "1");
+    const prisma = createPrismaMock();
+    const rawRows = [
+      {
+        id: "raw_linear_1",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-1",
+        occurredAt: new Date("2026-05-15T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-10T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-15T10:00:00.000Z"),
+        payload: {
+          id: "LIN-1",
+          state: { type: "completed" },
+          createdAt: "2026-05-10T10:00:00.000Z",
+          completedAt: "2026-05-15T10:00:00.000Z",
+        },
+      },
+      {
+        id: "raw_linear_2",
+        provider: IntegrationProvider.LINEAR,
+        objectType: "issue",
+        externalId: "LIN-2",
+        occurredAt: new Date("2026-05-20T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-20T10:00:00.000Z"),
+        payload: {
+          id: "LIN-2",
+          state: { type: "completed" },
+          createdAt: "2026-05-16T10:00:00.000Z",
+          completedAt: "2026-05-20T10:00:00.000Z",
+        },
+      },
+      {
+        id: "raw_github_1",
+        provider: IntegrationProvider.GITHUB,
+        objectType: "pull_request",
+        externalId: "repo/pull/7",
+        occurredAt: new Date("2026-05-18T10:00:00.000Z"),
+        sourceCreatedAt: new Date("2026-05-16T10:00:00.000Z"),
+        sourceUpdatedAt: new Date("2026-05-18T10:00:00.000Z"),
+        payload: {
+          number: 7,
+          merged: true,
+          created_at: "2026-05-16T10:00:00.000Z",
+          merged_at: "2026-05-18T10:00:00.000Z",
+        },
+      },
+    ] satisfies RawSourceRecordFixture[];
+    prisma.imladrisRawSourceRecord.findMany
+      .mockResolvedValueOnce(rawRows.slice(0, 2))
+      .mockResolvedValueOnce(rawRows.slice(2))
+      .mockResolvedValueOnce([]);
+
+    await materializeImladrisDevelopmentMetrics({
+      prisma: prisma as never,
+      context: CONTEXT,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-29T00:00:00.000Z"),
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        take: 2,
+        orderBy: [{ id: "asc" }],
+      }),
+    );
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: "raw_linear_2" },
+        skip: 1,
+        take: 2,
+      }),
+    );
+    const upsertArgs = prisma.imladrisCanonicalMetricValue.upsert.mock.calls[0][0] as {
+      create: { warnings: string[] };
+    };
+    expect(upsertArgs.create.warnings).toContain(
+      "Imladris materialization used the most recent 1 raw record per source; older raw records were skipped to bound cron memory.",
+    );
+    const lineageArgs = prisma.imladrisMetricLineage.createMany.mock.calls[0][0] as {
+      data: Array<{ rawRecordId: string }>;
+    };
+    expect(lineageArgs.data.map((row) => row.rawRecordId)).toEqual([
+      "raw_linear_2",
+      "raw_github_1",
+    ]);
+  });
+
   it("materializes development delivery health from Linear, GitHub, and PostHog raw records", async () => {
     const prisma = createPrismaMock();
     const periodStart = new Date("2026-05-01T00:00:00.000Z");
@@ -665,7 +764,7 @@ describe("Imladris canonical materialization", () => {
       status: "READY",
       rawRecordCount: 3,
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [
@@ -676,8 +775,7 @@ describe("Imladris canonical materialization", () => {
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
       where: {
         organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -839,12 +937,11 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
   });
 
   it("materializes organization metrics from current org raw records and legacy user raw records", async () => {
@@ -858,12 +955,11 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
   });
 
   it("does not count string false GitHub merge timestamps as merged pull requests", async () => {
@@ -1390,15 +1486,14 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         OR: [
           { scopeKey: "user:user_1", userId: "user_1" },
           { scopeKey: "global", userId: null, organizationId: null },
         ],
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -1434,12 +1529,11 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         OR: [{ scopeKey: "global", userId: null, organizationId: null }],
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -1472,7 +1566,7 @@ describe("Imladris canonical materialization", () => {
       now: new Date("2026-05-29T12:00:00.000Z"),
     });
 
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         AND: [
           {
@@ -1482,8 +1576,7 @@ describe("Imladris canonical materialization", () => {
           },
         ],
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
   });
 
   it("uses sourceCreatedAt as lineage capture time when provider records only expose creation time", async () => {
@@ -2104,15 +2197,14 @@ describe("Imladris canonical materialization", () => {
         eligibleAccounts: 2,
       },
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [IntegrationProvider.HUBSPOT, IntegrationProvider.POSTHOG],
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
       where: {
         organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -3074,7 +3166,7 @@ describe("Imladris canonical materialization", () => {
         },
       }),
     ]);
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [
@@ -3085,8 +3177,7 @@ describe("Imladris canonical materialization", () => {
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -15612,7 +15703,7 @@ describe("Imladris canonical materialization", () => {
         collaborationCoverage: 1,
       },
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [
@@ -15624,8 +15715,7 @@ describe("Imladris canonical materialization", () => {
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
       where: {
         organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -17275,7 +17365,7 @@ describe("Imladris canonical materialization", () => {
         currency: "USD",
       },
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [
@@ -17295,8 +17385,7 @@ describe("Imladris canonical materialization", () => {
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
       where: {
         organizationId_userId_metricKey_periodEnd_calculationVersion: {
@@ -17653,7 +17742,7 @@ describe("Imladris canonical materialization", () => {
         ratio: 5.14,
       }),
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenLastCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: expect.arrayContaining([
@@ -17662,8 +17751,7 @@ describe("Imladris canonical materialization", () => {
           ]),
         },
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisMetricLineage.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
@@ -21220,7 +21308,7 @@ describe("Imladris canonical materialization", () => {
         collaborationSignals: 2,
       },
     });
-    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith({
+    expect(prisma.imladrisRawSourceRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         provider: {
           in: [
@@ -21234,8 +21322,7 @@ describe("Imladris canonical materialization", () => {
         },
         OR: SCOPED_RAW_RECORD_FILTERS,
       }),
-      orderBy: [{ occurredAt: "asc" }, { sourceUpdatedAt: "asc" }],
-    });
+    }));
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith({
       where: {
         organizationId_userId_metricKey_periodEnd_calculationVersion: {
