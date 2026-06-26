@@ -107,6 +107,7 @@ describe("runAnalyticsSync", () => {
   });
 
   afterEach(() => {
+    delete process.env.IMLADRIS_MATERIALIZATION_ENABLED;
     vi.useRealTimers();
   });
 
@@ -368,6 +369,32 @@ describe("runAnalyticsSync", () => {
     consoleError.mockRestore();
   });
 
+  it("skips Imladris materialization when the emergency kill switch is disabled", async () => {
+    process.env.IMLADRIS_MATERIALIZATION_ENABLED = "false";
+    const prisma = createPrismaMock();
+
+    const result = await runAnalyticsSync({
+      prisma: prisma as never,
+      userIds: ["user_1"],
+    });
+
+    expect(materializeImladrisCanonicalMetrics).not.toHaveBeenCalled();
+    expect(pruneAnalyticsSnapshots).toHaveBeenCalledOnce();
+    expect(pruneImladrisMetricLineage).toHaveBeenCalledOnce();
+    expect(result.imladris).toEqual([
+      {
+        userId: "user_1",
+        organizationId: "org_1",
+        periodStart: "2026-05-02T12:00:00.000Z",
+        periodEnd: "2026-06-01T12:00:00.000Z",
+        metricsCount: 0,
+        metricKeys: [],
+        warning:
+          "Imladris materialization skipped by IMLADRIS_MATERIALIZATION_ENABLED=false.",
+      },
+    ]);
+  });
+
   it("runs growth-control pruning after materialization and surfaces the results", async () => {
     const prisma = createPrismaMock();
     const lineageResult = {
@@ -418,14 +445,21 @@ describe("runAnalyticsSync", () => {
       now: new Date("2026-06-01T12:00:00.000Z"),
     });
 
-    // Pruning must run after materialization so it never contends with the
-    // cycle's own lineage writes, and metric value thinning must run after
-    // lineage pruning (it only deletes lineage-free rows).
+    // Snapshot pruning runs before materialization so it does not overlap with
+    // raw-record windows in memory. Growth pruning still runs after
+    // materialization so it never contends with the cycle's own lineage writes,
+    // and metric value thinning must run after lineage pruning (it only deletes
+    // lineage-free rows).
+    const snapshotPruningOrder = vi.mocked(pruneAnalyticsSnapshots).mock.invocationCallOrder[0];
+    const firstMaterializeOrder = vi
+      .mocked(materializeImladrisCanonicalMetrics)
+      .mock.invocationCallOrder[0];
     const lastMaterializeOrder = vi
       .mocked(materializeImladrisCanonicalMetrics)
       .mock.invocationCallOrder.at(-1);
     const lineageOrder = vi.mocked(pruneImladrisMetricLineage).mock.invocationCallOrder[0];
     const metricValueOrder = vi.mocked(pruneImladrisMetricValues).mock.invocationCallOrder[0];
+    expect(firstMaterializeOrder).toBeGreaterThan(snapshotPruningOrder);
     expect(lastMaterializeOrder).toBeDefined();
     expect(lineageOrder).toBeGreaterThan(lastMaterializeOrder as number);
     expect(metricValueOrder).toBeGreaterThan(lineageOrder);

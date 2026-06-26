@@ -250,12 +250,20 @@ describe("POST /api/cron/sync", () => {
     expect(runRules).toHaveBeenCalledOnce();
     expect(runHealthChecksSync).toHaveBeenCalledOnce();
     expect(materializeRetentionCurrent).toHaveBeenCalledOnce();
+    expect(vi.mocked(runRules).mock.invocationCallOrder[0]).toBeGreaterThan(
+      vi.mocked(runAnalyticsSync).mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(runHealthChecksSync).mock.invocationCallOrder[0]).toBeGreaterThan(
+      vi.mocked(runRules).mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(materializeRetentionCurrent).mock.invocationCallOrder[0]).toBeGreaterThan(
+      vi.mocked(runHealthChecksSync).mock.invocationCallOrder[0],
+    );
     expect(consoleError).toHaveBeenCalledWith(
       "POST /api/cron/sync background degraded:",
-      expect.objectContaining({
-        ok: false,
+      {
         failures: ["health: 1 user health check failed"],
-      }),
+      },
     );
     consoleError.mockRestore();
   });

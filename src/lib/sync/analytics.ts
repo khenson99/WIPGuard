@@ -88,6 +88,8 @@ export interface AnalyticsSyncResult {
 
 const DEFAULT_RANGE_PRESETS: RollingRangePreset[] = ['7d', '30d'];
 const IMLADRIS_MATERIALIZATION_WINDOW_DAYS = 30;
+const IMLADRIS_MATERIALIZATION_DISABLED_WARNING =
+  "Imladris materialization skipped by IMLADRIS_MATERIALIZATION_ENABLED=false.";
 
 interface UserOrganizationRow {
   id: string;
@@ -135,6 +137,11 @@ function parseDefaultRetentionDays(): number {
 
 function daysBefore(date: Date, days: number): Date {
   return new Date(date.getTime() - days * 86_400_000);
+}
+
+function imladrisMaterializationEnabled(): boolean {
+  const raw = process.env.IMLADRIS_MATERIALIZATION_ENABLED?.trim().toLowerCase();
+  return raw !== "false" && raw !== "0" && raw !== "off";
 }
 
 async function loadImladrisMaterializationContexts(
@@ -247,6 +254,28 @@ async function runImladrisMaterializationSync(input: {
   return results;
 }
 
+async function skipImladrisMaterializationSync(input: {
+  prisma: PrismaClientType;
+  userIds: string[];
+  now: Date;
+}): Promise<ImladrisMaterializationSyncResult[]> {
+  const contexts = await loadImladrisMaterializationContexts(
+    input.prisma,
+    input.userIds,
+  );
+  const periodEnd = input.now;
+  const periodStart = daysBefore(periodEnd, IMLADRIS_MATERIALIZATION_WINDOW_DAYS);
+
+  return contexts.map((context) => ({
+    userId: context.userId,
+    organizationId: context.organizationId,
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    metrics: [],
+    warning: IMLADRIS_MATERIALIZATION_DISABLED_WARNING,
+  }));
+}
+
 /**
  * Run the analytics sync (refresh + retention pruning).
  *
@@ -285,15 +314,23 @@ export async function runAnalyticsSync(
     failureCount > 0
       ? `Analytics refresh reported ${failureCount} provider failure${failureCount === 1 ? '' : 's'}; canonical materialization used available raw records.`
       : undefined;
-  const [pruning, imladris] = await Promise.all([
-    pruneAnalyticsSnapshots({ olderThanDays }),
-    runImladrisMaterializationSync({
-      prisma: input.prisma,
-      userIds,
-      now,
-      warning: materializationWarning,
-    }),
-  ]);
+  // Prune analytics snapshots before Imladris materialization instead of
+  // overlapping both phases. Materialization loads raw-record windows into
+  // memory, and pruning can also hold large query buffers; sequencing keeps
+  // peak cron-sync heap bounded to one phase at a time.
+  const pruning = await pruneAnalyticsSnapshots({ olderThanDays });
+  const imladris = imladrisMaterializationEnabled()
+    ? await runImladrisMaterializationSync({
+        prisma: input.prisma,
+        userIds,
+        now,
+        warning: materializationWarning,
+      })
+    : await skipImladrisMaterializationSync({
+        prisma: input.prisma,
+        userIds,
+        now,
+      });
 
   // Growth-control retention for the two unbounded tables (lineage detail of
   // superseded metric values; terminal outbox events). Runs after

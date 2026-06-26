@@ -227,6 +227,14 @@ function isDegradedSyncBody(value: unknown): boolean {
   return record?.ok === false;
 }
 
+async function settleAsync<T>(fn: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: "fulfilled", value: await fn() };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
 async function executeCronSync(input: {
   startedAt: string;
   ownerUserId: string | null;
@@ -370,32 +378,6 @@ async function executeCronSync(input: {
       visitorFunnelEnrichmentStatus = [];
     }
 
-    // Analytics refresh + retention pruning are now bundled in the shared
-    // runAnalyticsSync() (src/lib/sync/analytics.ts) so the orchestrator
-    // and this cron route stay in lockstep. We destructure the combined
-    // result back into separate `analytics` and `pruning` response fields
-    // to preserve the external response-body shape that monitoring depends on.
-    const [analyticsSyncResult, rulesResult, healthResult, retentionResult] = await Promise.allSettled([
-      runAnalyticsSync({
-        prisma,
-        userIds,
-        rangePresets: ["7d", "30d", "90d"],
-        includeMonthlyFinancialHistory: true,
-        pruneOlderThanDays: parseRetentionDays(),
-      }),
-      runRules({
-        mode: "incremental",
-        dryRun: false,
-        userIds,
-        startedAt,
-      }),
-      // Health checks run per-user; shared with the orchestrator —
-      // see src/lib/sync/health-checks.ts. The returned array preserves
-      // the cron route's prior `settled.health` shape.
-      runHealthChecksSync({ prisma, userIds }),
-      runRetentionMaterialization({ ownerUserId, userIds }),
-    ]);
-
     const settled = {
       analytics: null as unknown,
       rules: null as unknown,
@@ -407,6 +389,24 @@ async function executeCronSync(input: {
       outboxPruning: null as unknown,
     };
 
+    // Analytics refresh + retention pruning are now bundled in the shared
+    // runAnalyticsSync() (src/lib/sync/analytics.ts) so the orchestrator
+    // and this cron route stay in lockstep. We destructure the combined
+    // result back into separate `analytics` and `pruning` response fields
+    // to preserve the external response-body shape that monitoring depends on.
+    //
+    // Keep these phases sequential. The analytics/Imladris phase can hold large
+    // provider payloads and raw-record windows; running rules, health, and
+    // retention beside it raises peak heap for no correctness benefit.
+    const analyticsSyncResult = await settleAsync(() =>
+      runAnalyticsSync({
+        prisma,
+        userIds,
+        rangePresets: ["7d", "30d", "90d"],
+        includeMonthlyFinancialHistory: true,
+        pruneOlderThanDays: parseRetentionDays(),
+      }),
+    );
     if (analyticsSyncResult.status === "fulfilled") {
       // Split bundled result back into `analytics` (refresh) and `pruning`
       // top-level fields — external monitors read these separately.
@@ -424,6 +424,15 @@ async function executeCronSync(input: {
       failures.push(`analytics: ${msg}`);
       console.error("POST /api/cron/sync analytics failed:", analyticsSyncResult.reason);
     }
+
+    const rulesResult = await settleAsync(() =>
+      runRules({
+        mode: "incremental",
+        dryRun: false,
+        userIds,
+        startedAt,
+      }),
+    );
     if (rulesResult.status === "fulfilled") {
       settled.rules = rulesResult.value;
       failures.push(...collectRulesPartialFailures(rulesResult.value));
@@ -432,6 +441,13 @@ async function executeCronSync(input: {
       failures.push(`rules: ${msg}`);
       console.error("POST /api/cron/sync rules failed:", rulesResult.reason);
     }
+
+    // Health checks run per-user; shared with the orchestrator —
+    // see src/lib/sync/health-checks.ts. The returned array preserves
+    // the cron route's prior `settled.health` shape.
+    const healthResult = await settleAsync(() =>
+      runHealthChecksSync({ prisma, userIds }),
+    );
     if (healthResult.status === "fulfilled") {
       settled.health = healthResult.value;
       failures.push(...collectHealthPartialFailures(healthResult.value));
@@ -440,6 +456,10 @@ async function executeCronSync(input: {
       failures.push(`health: ${msg}`);
       console.error("POST /api/cron/sync health failed:", healthResult.reason);
     }
+
+    const retentionResult = await settleAsync(() =>
+      runRetentionMaterialization({ ownerUserId, userIds }),
+    );
     if (retentionResult.status === "fulfilled") {
       settled.retention = retentionResult.value;
     } else {
@@ -538,11 +558,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   after(async () => {
     const result = await executeCronSyncGuarded({ startedAt, ownerUserId, userIds });
     if (result.status >= 400) {
-      console.error("POST /api/cron/sync background error:", result.body);
+      console.error("POST /api/cron/sync background error:", {
+        status: result.status,
+        error: (result.body as Record<string, unknown>).error ?? "unknown",
+      });
       return;
     }
     if (isDegradedSyncBody(result.body)) {
-      console.error("POST /api/cron/sync background degraded:", result.body);
+      console.error("POST /api/cron/sync background degraded:", {
+        failures: (result.body as Record<string, unknown>).failures ?? [],
+      });
     }
   });
 
