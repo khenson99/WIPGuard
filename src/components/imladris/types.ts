@@ -166,6 +166,8 @@ export interface SourcesApiRow {
   providerKey?: unknown;
   status?: unknown;
   state?: unknown;
+  connectionStatus?: unknown;
+  credentialConnected?: unknown;
   lastSyncedAt?: unknown;
   lastSync?: unknown;
   capturedAt?: unknown;

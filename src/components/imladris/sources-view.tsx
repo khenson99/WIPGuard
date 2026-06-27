@@ -24,7 +24,7 @@ import type { ImladrisModel, ProviderState } from "./types";
 const PROVIDER_ORDER: ProviderState[] = ["error", "stale", "partial", "connected"];
 
 const STATE_LABEL: Record<ProviderState, string> = {
-  connected: "Connected",
+  connected: "Ready",
   stale: "Stale",
   partial: "Partial",
   error: "Error",
@@ -62,7 +62,7 @@ export function SourcesView({ model }: SourcesViewProps) {
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Source health</h2>
           <span className={styles.sectionNote}>
-            {entries.length} connected provider{entries.length === 1 ? "" : "s"} feeding canonical metrics
+            {entries.length} tracked provider{entries.length === 1 ? "" : "s"} feeding canonical metrics
           </span>
         </div>
         <div className={`${styles.grid} ${styles.g4}`}>

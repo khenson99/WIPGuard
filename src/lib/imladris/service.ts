@@ -26,6 +26,7 @@ import type { PrismaClientType } from "@/lib/prisma";
 const MAX_LINEAGE_EVIDENCE_ROWS = 500;
 
 type SourceStatus = "connected" | "missing" | "partial" | "stale" | "error";
+type SourceConnectionStatus = "connected" | "missing" | "disconnected" | "error";
 type MetricStatus = "ready" | "missing" | "partial" | "stale" | "error";
 
 interface UserContext {
@@ -444,6 +445,22 @@ function connectionExpired(connection: SourceRow | null, now: Date): boolean {
 
 function connectionExpiryInvalid(connection: SourceRow | null): boolean {
   return Boolean(connection?.expiresAt && toDate(connection.expiresAt) === null);
+}
+
+function sourceConnectionStatus(connection: SourceRow | null, now: Date): SourceConnectionStatus {
+  if (!connection) return "missing";
+
+  const status = normalizeSourceStateStatus(connection.status);
+  if (status === "DISCONNECTED") return "disconnected";
+  if (
+    status === "ERROR" ||
+    connectionExpiryInvalid(connection) ||
+    connectionExpired(connection, now)
+  ) {
+    return "error";
+  }
+
+  return status === "CONNECTED" ? "connected" : "missing";
 }
 
 function canonicalMetricScopeWhere(context: UserContext) {
@@ -1493,12 +1510,16 @@ export async function buildImladrisSources(input: {
       hasRequiredLookback: syncRun ? hasRequiredLookback : null,
       hasFreshWindowEnd: syncRun ? hasFreshWindowEnd : null,
     });
+    const connectionStatus = sourceConnectionStatus(connection, now);
 
     return {
       key: provider.key,
       label: provider.label,
       status,
       connected: status === "connected",
+      ready: status === "connected",
+      credentialConnected: connectionStatus === "connected",
+      connectionStatus,
       lastSyncedAt: toIso(lastSyncedAt),
       lastSnapshotAt: toIso(snapshot?.capturedAt),
       lastError: sourceLastError({

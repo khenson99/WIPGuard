@@ -2907,6 +2907,9 @@ describe("Imladris service", () => {
       key: "linear",
       status: "partial",
       connected: false,
+      ready: false,
+      credentialConnected: true,
+      connectionStatus: "connected",
       lastSyncedAt: null,
       lastError: "Linear is connected but no raw sync has completed yet.",
     });

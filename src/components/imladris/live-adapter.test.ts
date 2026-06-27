@@ -160,6 +160,34 @@ describe("loadImladrisData — live-or-error gating", () => {
     expect(result.data.providers.stripe.records).toBe(4321);
     expect(result.data.providers.semrush.state).toBe("stale");
   });
+
+  it("keeps credential-connected source readiness issues out of disconnected wording", async () => {
+    installFetch((url) => {
+      if (url.includes("/api/imladris/sources")) {
+        return {
+          ok: true,
+          json: {
+            sources: [
+              {
+                key: "linear",
+                status: "partial",
+                credentialConnected: true,
+                connectionStatus: "connected",
+              },
+            ],
+          },
+        };
+      }
+      return respondAllOk(url);
+    });
+    const result = await loadImladrisData();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.providers.linear.state).toBe("partial");
+    expect(result.data.providers.linear.error).toBe(
+      "Source evidence partial; provider credentials are connected.",
+    );
+  });
 });
 
 describe("loadImladrisData — no seeded sample values leak in live mode", () => {

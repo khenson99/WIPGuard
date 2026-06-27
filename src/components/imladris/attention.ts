@@ -33,7 +33,7 @@ export function buildAttention(model: ImladrisModel, idx: number): AttentionItem
     items.push({
       sev: stateToSev[p.state] ?? "info",
       tag: "Data source",
-      title: `${p.label} · ${p.state === "error" ? "disconnected" : p.state}`,
+      title: `${p.label} · ${p.state === "error" ? "source error" : p.state}`,
       desc: `${p.error || ""} Affects ${affLabels}${affected.length > 2 ? ` +${affected.length - 2} more` : ""}.`,
       metricKey: affected[0].key,
       mag: 100,

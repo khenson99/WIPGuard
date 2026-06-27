@@ -93,6 +93,13 @@ describe("Imladris API routes", () => {
       "unify",
       "mercury",
     ]);
+    expect(payload.sources[0]).toEqual(
+      expect.objectContaining({
+        ready: false,
+        credentialConnected: false,
+        connectionStatus: "missing",
+      }),
+    );
   });
 
   it("blocks investor users from direct Imladris source APIs", async () => {

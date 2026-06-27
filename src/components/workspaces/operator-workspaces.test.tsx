@@ -286,6 +286,7 @@ describe("operator workspaces", () => {
     render(<SourcesWorkspace sources={SOURCE_ROWS} />);
 
     expect(screen.getByRole("heading", { name: "Source Control Room" })).toBeTruthy();
+    expect(screen.getByText("Ready sources")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Manage connections" }).getAttribute("href")).toBe("#connections");
     expect(screen.getByText("Provider Connections")).toBeTruthy();
     expect(screen.getByText("HubSpot")).toBeTruthy();

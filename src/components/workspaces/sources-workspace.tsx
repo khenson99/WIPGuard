@@ -19,6 +19,9 @@ interface SourceRow {
   label: string;
   status: string;
   connected: boolean;
+  ready?: boolean;
+  credentialConnected?: boolean;
+  connectionStatus?: string;
   lastSyncedAt: string | null;
   lastSnapshotAt: string | null;
   lastError: string | null;
@@ -88,7 +91,7 @@ function SourceHealthRow({ source }: { source: SourceRow }) {
 }
 
 export function SourcesWorkspace({ sources = [] }: { sources?: readonly SourceRow[] }) {
-  const connected = sources.filter((source) => source.status === "connected").length;
+  const ready = sources.filter((source) => source.ready ?? source.status === "connected").length;
   const needsAttention = sources.filter((source) => ["missing", "partial", "stale", "error"].includes(source.status)).length;
   const errorCount = sources.reduce((sum, source) => sum + (source.latestSyncRun?.errorCount ?? 0), 0);
 
@@ -109,7 +112,7 @@ export function SourcesWorkspace({ sources = [] }: { sources?: readonly SourceRo
           </div>
         </section>
         <section className="grid gap-3 md:grid-cols-3">
-          <SummaryCard label="Connected sources" value={`${connected}/${sources.length}`} detail="Providers with fresh enough evidence for metric materialization." icon={ShieldCheck} />
+          <SummaryCard label="Ready sources" value={`${ready}/${sources.length}`} detail="Providers with fresh enough evidence for metric materialization." icon={ShieldCheck} />
           <SummaryCard label="Needs attention" value={String(needsAttention)} detail="Missing, stale, partial, or errored provider evidence." icon={ShieldAlert} />
           <SummaryCard label="Record errors" value={String(errorCount)} detail="Errored records reported by latest sync runs." icon={DatabaseZap} />
         </section>

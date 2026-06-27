@@ -175,7 +175,18 @@ function mergeSources(model: ImladrisModel, payload: SourcesApiResponse | Source
     // Top-level recordCount/records, else the production `latestSyncRun.recordCount`.
     const rec = num(row.recordCount ?? row.records ?? row.latestSyncRun?.recordCount);
     if (rec != null) p.records = rec;
-    if (typeof row.lastError === "string" && row.lastError) p.error = row.lastError;
+    const credentialConnected = row.credentialConnected === true;
+    const connectionStatus = String(row.connectionStatus ?? "").toLowerCase();
+    if (credentialConnected && (st === "stale" || st === "partial" || st === "error")) {
+      const statusLabel = st === "error" ? "Source sync error" : `Source evidence ${st}`;
+      p.error = typeof row.lastError === "string" && row.lastError
+        ? row.lastError
+        : `${statusLabel}; provider credentials are connected.`;
+    } else if (typeof row.lastError === "string" && row.lastError) {
+      p.error = row.lastError;
+    } else if (connectionStatus === "disconnected") {
+      p.error = "Provider credentials are disconnected.";
+    }
   });
 }
 
