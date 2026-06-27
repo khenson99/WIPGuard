@@ -4,6 +4,11 @@ import type { NextRequest } from "next/server";
 const afterCallbacks: Array<() => void | Promise<void>> = [];
 const mockIntegrationConnectionFindMany = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockResetPrismaClient = vi.fn();
+const mockWithSyncAdvisoryLock = vi.fn(async (fn: () => Promise<unknown>) => ({
+  ran: true,
+  result: await fn(),
+}));
 
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -63,10 +68,7 @@ vi.mock("@/lib/retention/pipeline", () => ({
 // Here it is a transparent pass-through so these tests cover the route's sync
 // behaviour without needing a real pg pool.
 vi.mock("@/lib/sync/sync-lock", () => ({
-  withSyncAdvisoryLock: async (fn: () => Promise<unknown>) => ({
-    ran: true,
-    result: await fn(),
-  }),
+  withSyncAdvisoryLock: (fn: () => Promise<unknown>) => mockWithSyncAdvisoryLock(fn),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -78,6 +80,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
   },
+  resetPrismaClient: (...args: unknown[]) => mockResetPrismaClient(...args),
 }));
 
 describe("POST /api/cron/sync", () => {
@@ -90,6 +93,11 @@ describe("POST /api/cron/sync", () => {
     afterCallbacks.length = 0;
     mockIntegrationConnectionFindMany.mockResolvedValue([]);
     mockUserFindUnique.mockResolvedValue({ organizationId: "org_1" });
+    mockResetPrismaClient.mockResolvedValue(undefined);
+    mockWithSyncAdvisoryLock.mockImplementation(async (fn: () => Promise<unknown>) => ({
+      ran: true,
+      result: await fn(),
+    }));
     process.env.CRON_SYNC_SECRET = "cron-secret";
     process.env.INTEGRATION_OWNER_USER_ID = "owner_1";
   });
@@ -174,6 +182,7 @@ describe("POST /api/cron/sync", () => {
       id: "owner_1",
       organizationId: "org_1",
     });
+    expect(mockResetPrismaClient).toHaveBeenCalledOnce();
   });
 
   it("queues heavy sync work in the background by default", async () => {
@@ -265,7 +274,36 @@ describe("POST /api/cron/sync", () => {
         failures: ["health: 1 user health check failed"],
       },
     );
+    expect(mockResetPrismaClient).toHaveBeenCalledOnce();
     consoleError.mockRestore();
+  });
+
+  it("does not reset Prisma when the sync advisory lock skips the cycle", async () => {
+    mockWithSyncAdvisoryLock.mockResolvedValueOnce({
+      ran: false,
+      reason: "another sync cycle is already running",
+    } as never);
+
+    const { POST } = await import("@/app/api/cron/sync/route");
+    const request = new Request("http://localhost/api/cron/sync?wait=1", {
+      method: "POST",
+      headers: { "x-cron-secret": "cron-secret" },
+    }) as unknown as NextRequest;
+
+    const response = await POST(request);
+    const body = (await response.json()) as {
+      ok: boolean;
+      skipped: boolean;
+      reason: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      skipped: true,
+      reason: "another sync cycle is already running",
+    });
+    expect(mockResetPrismaClient).not.toHaveBeenCalled();
   });
 
   it("passes owner context to visitor funnel enrichment for Imladris raw records", async () => {

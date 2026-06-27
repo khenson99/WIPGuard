@@ -194,6 +194,93 @@ describe("Imladris service", () => {
     });
   });
 
+  it("treats unfinished source sync rows as partial instead of terminal errors", async () => {
+    const prisma = createPrismaMock({
+      imladrisSourceSyncRun: {
+        findMany: vi.fn(async () => [
+          {
+            provider: "CODA",
+            status: "ERROR",
+            startedAt: new Date("2026-05-29T09:00:00.000Z"),
+            completedAt: null,
+            windowStart: new Date("2025-04-29T10:00:00.000Z"),
+            windowEnd: new Date("2026-05-29T09:00:00.000Z"),
+            checkpoint: null,
+            recordCount: 8,
+            acceptedCount: 0,
+            errorCount: 0,
+            lastError: null,
+          },
+        ]),
+      },
+    });
+
+    const sources = await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    const coda = sources.find((source) => source.key === "coda");
+    expect(coda).toMatchObject({
+      key: "coda",
+      status: "partial",
+      connected: false,
+      lastError: "Sync run has not completed.",
+      latestSyncRun: {
+        status: "ERROR",
+        completedAt: null,
+        recordCount: 8,
+        acceptedCount: 0,
+        errorCount: 0,
+      },
+    });
+  });
+
+  it("prefers completed source evidence over newer unfinished placeholder rows", async () => {
+    const completedRun = successfulSyncRun("CODA", "2026-05-29T08:00:00.000Z");
+    const prisma = createPrismaMock({
+      imladrisSourceSyncRun: {
+        findMany: vi.fn(async () => [
+          {
+            provider: "CODA",
+            status: "ERROR",
+            startedAt: new Date("2026-05-29T09:00:00.000Z"),
+            completedAt: null,
+            windowStart: new Date("2025-04-29T10:00:00.000Z"),
+            windowEnd: new Date("2026-05-29T09:00:00.000Z"),
+            checkpoint: { cursor: "unfinished" },
+            recordCount: 8,
+            acceptedCount: 0,
+            errorCount: 0,
+            lastError: null,
+          },
+          completedRun,
+        ]),
+      },
+    });
+
+    const sources = await buildImladrisSources({
+      prisma,
+      context: CONTEXT,
+      now: new Date("2026-05-29T10:00:00.000Z"),
+    });
+
+    const coda = sources.find((source) => source.key === "coda");
+    expect(coda).toMatchObject({
+      key: "coda",
+      status: "connected",
+      connected: true,
+      lastSyncedAt: "2026-05-29T08:03:00.000Z",
+      lastError: null,
+      latestSyncRun: {
+        status: "SUCCESS",
+        startedAt: "2026-05-29T08:00:00.000Z",
+        completedAt: "2026-05-29T08:03:00.000Z",
+      },
+    });
+  });
+
   it("normalizes Unix timestamp sync-run metadata before source readiness analysis", async () => {
     const prisma = createPrismaMock({
       imladrisSourceSyncRun: {

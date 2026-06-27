@@ -744,13 +744,15 @@ function sourceStatus(input: {
     connectionExpiryInvalid(input.connection) ||
     connectionExpired(input.connection, input.now) ||
     connectionStatus === "ERROR" ||
-    (!input.syncRun && snapshotStatus === "ERROR") ||
-    syncRunStatus === "ERROR"
+    (!input.syncRun && snapshotStatus === "ERROR")
   ) {
     return "error";
   }
   if (input.syncRun && !toDate(input.syncRun.completedAt)) {
     return "partial";
+  }
+  if (syncRunStatus === "ERROR") {
+    return "error";
   }
   if (!input.connection && !input.snapshot && !input.syncRun) return "missing";
   if (input.connection && !input.snapshot && !input.syncRun && !input.lastSyncedAt) {

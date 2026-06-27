@@ -167,4 +167,41 @@ export const prisma = new Proxy({} as PrismaClientType, {
   },
 });
 
+const RESET_DRAIN_GRACE_MS = 10_000;
+
+/**
+ * Rotate the singleton Prisma client after heavy cron work so new requests use
+ * a fresh pg adapter/pool, while the old pool drains after a grace window.
+ */
+export async function resetPrismaClient(): Promise<void> {
+  const client = globalForPrisma.prisma;
+  const pool = globalForPrisma.pgPool;
+
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.pgPool = undefined;
+  poolMonitor.detach();
+
+  if (!client && !pool) return;
+
+  const timer = setTimeout(() => {
+    void (async () => {
+      if (client) {
+        try {
+          await (client as unknown as { $disconnect?: () => Promise<void> }).$disconnect?.();
+        } catch (error) {
+          console.warn("[Prisma] $disconnect error during reset:", error);
+        }
+      }
+      if (pool) {
+        try {
+          await pool.end();
+        } catch (error) {
+          console.warn("[Prisma] pool.end error during reset:", error);
+        }
+      }
+    })();
+  }, RESET_DRAIN_GRACE_MS);
+  (timer as unknown as { unref?: () => void }).unref?.();
+}
+
 export default prisma;

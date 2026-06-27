@@ -114,6 +114,15 @@ class PoolMonitor {
   }
 
   /**
+   * Detach from the current pool so monitoring can bind to a rotated pool.
+   */
+  detach(): void {
+    this.isAttached = false;
+    this.pool = null;
+    this.maxPoolSize = 0;
+  }
+
+  /**
    * Record a connection wait time for metrics tracking.
    * Call this when a query completes to track how long it waited for a connection.
    */

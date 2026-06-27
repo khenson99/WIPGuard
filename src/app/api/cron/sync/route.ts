@@ -18,7 +18,7 @@ import {
   bestEffortMigrateRulesToOwner,
   ensureIntegrationOwnerOrganizationId,
 } from "@/lib/integrations/ownership";
-import { prisma } from "@/lib/prisma";
+import { prisma, resetPrismaClient } from "@/lib/prisma";
 import { materializeRetentionCurrent } from "@/lib/retention/pipeline";
 import { withSyncAdvisoryLock } from "@/lib/sync/sync-lock";
 
@@ -225,6 +225,16 @@ function collectHealthPartialFailures(value: unknown): string[] {
 function isDegradedSyncBody(value: unknown): boolean {
   const record = asRecord(value);
   return record?.ok === false;
+}
+
+function shouldResetPrismaAfterCronBody(value: unknown): boolean {
+  const record = asRecord(value);
+  return record?.skipped !== true;
+}
+
+async function resetPrismaAfterCron(): Promise<void> {
+  await resetPrismaClient();
+  (globalThis as unknown as { gc?: () => void }).gc?.();
 }
 
 async function settleAsync<T>(fn: () => Promise<T>): Promise<PromiseSettledResult<T>> {
@@ -552,22 +562,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (shouldWaitForCompletion(request)) {
     const result = await executeCronSyncGuarded({ startedAt, ownerUserId, userIds });
+    if (shouldResetPrismaAfterCronBody(result.body)) {
+      await resetPrismaAfterCron();
+    }
     return NextResponse.json(result.body, { status: result.status });
   }
 
   after(async () => {
     const result = await executeCronSyncGuarded({ startedAt, ownerUserId, userIds });
-    if (result.status >= 400) {
-      console.error("POST /api/cron/sync background error:", {
-        status: result.status,
-        error: (result.body as Record<string, unknown>).error ?? "unknown",
-      });
-      return;
-    }
-    if (isDegradedSyncBody(result.body)) {
-      console.error("POST /api/cron/sync background degraded:", {
-        failures: (result.body as Record<string, unknown>).failures ?? [],
-      });
+    try {
+      if (result.status >= 400) {
+        console.error("POST /api/cron/sync background error:", {
+          status: result.status,
+          error: (result.body as Record<string, unknown>).error ?? "unknown",
+        });
+        return;
+      }
+      if (isDegradedSyncBody(result.body)) {
+        console.error("POST /api/cron/sync background degraded:", {
+          failures: (result.body as Record<string, unknown>).failures ?? [],
+        });
+      }
+    } finally {
+      if (shouldResetPrismaAfterCronBody(result.body)) {
+        await resetPrismaAfterCron();
+      }
     }
   });
 

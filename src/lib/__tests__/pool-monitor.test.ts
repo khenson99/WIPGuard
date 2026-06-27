@@ -72,6 +72,21 @@ describe("PoolMonitor", () => {
     consoleSpy.mockRestore();
   });
 
+  it("should detach so a rotated pool can be monitored", () => {
+    const nextPool = Object.assign(new EventEmitter(), {
+      totalCount: 0,
+      idleCount: 0,
+      waitingCount: 0,
+    });
+
+    PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
+    PoolMonitorModule.poolMonitor.detach();
+    PoolMonitorModule.poolMonitor.attach(nextPool as unknown as Pool, 10);
+
+    const metrics = PoolMonitorModule.poolMonitor.getMetrics();
+    expect(metrics.maxPoolSize).toBe(10);
+  });
+
   it("should record wait times and calculate average", () => {
     PoolMonitorModule.poolMonitor.attach(mockPool as unknown as Pool, 25);
 
