@@ -89,24 +89,42 @@ const POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
   "trialstarted",
 ]);
 
-function summarizePostHogEvents(events: unknown[]): {
-  pageviewCount: number;
-  conversionEventCount: number;
-  eventNameCounts: Record<string, number>;
-} {
-  const eventNameCounts: Record<string, number> = {};
-  let pageviewCount = 0;
-  let conversionEventCount = 0;
+// Default number of recent raw events to retain as a sample alongside the
+// aggregated counts. Bounded so a busy project cannot bloat a snapshot payload.
+const POSTHOG_EVENT_SAMPLE_LIMIT = 500;
 
-  for (const event of events) {
-    const key = normalizeEventKey(asRecord(event).event);
-    if (!key) continue;
-    eventNameCounts[key] = (eventNameCounts[key] ?? 0) + 1;
-    if (POSTHOG_PAGEVIEW_EVENT_KEYS.has(key)) pageviewCount += 1;
-    if (POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(key)) conversionEventCount += 1;
-  }
+function postHogTimestampWindow(fromDate: Date, toDate: Date): string {
+  // toDateKey yields YYYY-MM-DD (ISO date slice), so these interpolations are
+  // not attacker-controlled. Mirrors the prior /events after/before semantics.
+  const after = toDateKey(fromDate);
+  const before = toDateKey(toDate);
+  return `timestamp >= toDateTime('${after} 00:00:00') AND timestamp < toDateTime('${before} 00:00:00')`;
+}
 
-  return { pageviewCount, conversionEventCount, eventNameCounts };
+async function runPostHogHogQLQuery(input: {
+  host: string;
+  apiKey: string;
+  projectId: string;
+  query: string;
+}): Promise<{ columns: string[]; rows: unknown[][] }> {
+  const url = `${input.host}/api/projects/${encodeURIComponent(input.projectId)}/query/`;
+  const response = await fetchJsonResponse(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query: { kind: "HogQLQuery", query: input.query } }),
+    cache: "no-store",
+  });
+  const payload = asRecord(await readJson(response));
+  const columns = asArray(payload.columns).map((column) => asString(column) ?? "");
+  const rows = asArray(payload.results).map((row) => asArray(row));
+  return { columns, rows };
+}
+
+function columnIndex(columns: string[], name: string): number {
+  return columns.indexOf(name);
 }
 
 function isoDate(value: unknown): string | null {
@@ -204,50 +222,95 @@ function normalizeLinearProject(project: unknown, issues: UnknownRecord[], recen
   };
 }
 
+/**
+ * Fetches PostHog product analytics for a project.
+ *
+ * Uses PostHog's HogQL query API to pull *aggregated* event counts (grouped by
+ * event name) in a single fast, small request, instead of paginating the raw
+ * `/events` endpoint. The old approach routinely blew the refresh job timeout
+ * and stored tens of MB of raw events per snapshot (a disk-pressure risk on a
+ * busy project). The aggregate counts (eventCount, pageviewCount, …) are
+ * complete and authoritative for the window; a small bounded sample of recent
+ * events is also returned so the Imladris materialization lineage — which keys
+ * product events by identity — keeps producing per-event records.
+ */
 export async function fetchPostHogData(input: {
   apiKey: string;
   projectId: string;
   host?: string | null;
   fromDate: Date;
   toDate: Date;
-  maxPages?: number;
+  sampleLimit?: number;
 }): Promise<UnknownRecord> {
   const host = normalizePostHogHost(input.host);
-  const params = new URLSearchParams({
-    after: toDateKey(input.fromDate),
-    before: toDateKey(input.toDate),
-    limit: "1000",
-  });
-  const events: unknown[] = [];
-  const maxPages = normalizeMaxPages(input.maxPages);
-  let pageCount = 0;
-  let nextUrl: string | null =
-    `${host}/api/projects/${encodeURIComponent(input.projectId)}/events?${params.toString()}`;
+  const window = postHogTimestampWindow(input.fromDate, input.toDate);
+  const sampleLimit =
+    typeof input.sampleLimit === "number" && Number.isFinite(input.sampleLimit)
+      ? Math.max(1, Math.floor(input.sampleLimit))
+      : POSTHOG_EVENT_SAMPLE_LIMIT;
 
-  while (nextUrl && pageCount < maxPages) {
-    pageCount += 1;
-    const response = await fetchJsonResponse(nextUrl, {
-      headers: {
-        Authorization: `Bearer ${input.apiKey}`,
-      },
-      cache: "no-store",
-    });
-    const payload = asRecord(await readJson(response));
-    events.push(...asArray(payload.results));
-    nextUrl = asString(payload.next);
+  // Aggregated counts by event name — complete for the entire window.
+  const aggregate = await runPostHogHogQLQuery({
+    host,
+    apiKey: input.apiKey,
+    projectId: input.projectId,
+    query: `SELECT event, count() AS count FROM events WHERE ${window} GROUP BY event ORDER BY count DESC LIMIT 10000`,
+  });
+  const aggEvent = columnIndex(aggregate.columns, "event");
+  const aggCount = columnIndex(aggregate.columns, "count");
+
+  const eventNameCounts: Record<string, number> = {};
+  let eventCount = 0;
+  let pageviewCount = 0;
+  let conversionEventCount = 0;
+  for (const row of aggregate.rows) {
+    const key = normalizeEventKey(aggEvent >= 0 ? row[aggEvent] : undefined);
+    const count = asNumber(aggCount >= 0 ? row[aggCount] : null) ?? 0;
+    if (!key || count <= 0) continue;
+    eventNameCounts[key] = (eventNameCounts[key] ?? 0) + count;
+    eventCount += count;
+    if (POSTHOG_PAGEVIEW_EVENT_KEYS.has(key)) pageviewCount += count;
+    if (POSTHOG_MARKETING_CONVERSION_EVENT_KEYS.has(key)) conversionEventCount += count;
   }
 
-  const eventSummary = summarizePostHogEvents(events);
+  // Bounded sample of the most recent events — keeps the materialization
+  // lineage working without persisting the full (potentially huge) stream.
+  const sample = await runPostHogHogQLQuery({
+    host,
+    apiKey: input.apiKey,
+    projectId: input.projectId,
+    query: `SELECT toString(uuid) AS uuid, event, toString(timestamp) AS timestamp, toString(distinct_id) AS distinct_id FROM events WHERE ${window} ORDER BY timestamp DESC LIMIT ${sampleLimit}`,
+  });
+  const sUuid = columnIndex(sample.columns, "uuid");
+  const sEvent = columnIndex(sample.columns, "event");
+  const sTimestamp = columnIndex(sample.columns, "timestamp");
+  const sDistinct = columnIndex(sample.columns, "distinct_id");
+  const events = sample.rows.map((row) => {
+    const uuid = sUuid >= 0 ? asString(row[sUuid]) : null;
+    return {
+      id: uuid,
+      uuid,
+      event: sEvent >= 0 ? asString(row[sEvent]) : null,
+      timestamp: sTimestamp >= 0 ? asString(row[sTimestamp]) : null,
+      distinct_id: sDistinct >= 0 ? asString(row[sDistinct]) : null,
+    };
+  });
 
   return {
     events,
-    eventCount: events.length,
-    ...eventSummary,
+    eventCount,
+    pageviewCount,
+    conversionEventCount,
+    eventNameCounts,
     _meta: {
       fetchedAt: new Date().toISOString(),
       source: "live",
-      pageCount,
-      truncated: Boolean(nextUrl),
+      queryMode: "hogql",
+      sampleSize: events.length,
+      totalEvents: eventCount,
+      // Aggregate counts are complete for the window; only the raw-event sample
+      // is intentionally bounded, so the payload is not considered truncated.
+      truncated: false,
     },
   };
 }

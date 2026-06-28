@@ -18,16 +18,25 @@ afterEach(() => {
 });
 
 describe("development analytics fetchers", () => {
-  it("follows PostHog event pagination so historical syncs do not stop at the first page", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({
-        results: [{ uuid: "event_1", event: "Signup" }],
-        next: "https://app.posthog.com/api/projects/project_1/events?cursor=page_2",
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        results: [{ uuid: "event_2", event: "Activated" }],
-        next: null,
-      }));
+  // The PostHog fetcher issues two HogQL queries against /api/projects/:id/query/
+  // — an aggregate "GROUP BY event" count and a bounded recent-events sample.
+  function hogqlBody(req: RequestInit | undefined): string {
+    return typeof req?.body === "string" ? req.body : "";
+  }
+
+  it("aggregates PostHog event counts via the HogQL query API and keeps a bounded sample", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, req?: RequestInit) => {
+      if (hogqlBody(req).includes("GROUP BY event")) {
+        return jsonResponse({
+          columns: ["event", "count"],
+          results: [["$pageview", 5], ["demo_booked", 2], ["feature_clicked", 9]],
+        });
+      }
+      return jsonResponse({
+        columns: ["uuid", "event", "timestamp", "distinct_id"],
+        results: [["evt-1", "$pageview", "2026-05-30 12:00:00", "person-1"]],
+      });
+    });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     const data = await fetchPostHogData({
@@ -38,28 +47,42 @@ describe("development analytics fetchers", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/projects/project_1/query/"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer phx_token" }),
+      }),
+    );
+    // Aggregate totals are complete for the window (not bounded by the sample).
+    expect(data.eventCount).toBe(16);
     expect(data.events).toEqual([
-      { uuid: "event_1", event: "Signup" },
-      { uuid: "event_2", event: "Activated" },
+      { id: "evt-1", uuid: "evt-1", event: "$pageview", timestamp: "2026-05-30 12:00:00", distinct_id: "person-1" },
     ]);
-    expect(data.eventCount).toBe(2);
     expect(data._meta).toEqual(expect.objectContaining({
-      pageCount: 2,
+      queryMode: "hogql",
       truncated: false,
+      sampleSize: 1,
+      totalEvents: 16,
     }));
   });
 
-  it("summarizes fetched PostHog pageview and conversion events for downstream Imladris metrics", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
-      results: [
-        { uuid: "event_pageview_1", event: "$pageview" },
-        { uuid: "event_pageview_2", event: "page_view" },
-        { uuid: "event_demo", event: "demo_booked" },
-        { uuid: "event_trial", event: "trial_started" },
-        { uuid: "event_other", event: "feature_clicked" },
-      ],
-      next: null,
-    }));
+  it("classifies aggregated pageview and conversion counts for downstream Imladris metrics", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, req?: RequestInit) => {
+      if (hogqlBody(req).includes("GROUP BY event")) {
+        return jsonResponse({
+          columns: ["event", "count"],
+          results: [
+            ["$pageview", 3],
+            ["page_view", 1],
+            ["demo_booked", 2],
+            ["trial_started", 4],
+            ["feature_clicked", 7],
+          ],
+        });
+      }
+      return jsonResponse({ columns: ["uuid", "event", "timestamp", "distinct_id"], results: [] });
+    });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
 
     const data = await fetchPostHogData({
@@ -70,14 +93,14 @@ describe("development analytics fetchers", () => {
     });
 
     expect(data).toEqual(expect.objectContaining({
-      pageviewCount: 2,
-      conversionEventCount: 2,
+      pageviewCount: 4,
+      conversionEventCount: 6,
       eventNameCounts: {
-        "$pageview": 1,
+        "$pageview": 3,
         pageview: 1,
-        demobooked: 1,
-        trialstarted: 1,
-        featureclicked: 1,
+        demobooked: 2,
+        trialstarted: 4,
+        featureclicked: 7,
       },
     }));
   });

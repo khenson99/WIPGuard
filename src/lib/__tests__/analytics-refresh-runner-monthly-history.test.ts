@@ -879,19 +879,19 @@ describe("analytics monthly financial history refresh", () => {
       githubOwner: "example",
       githubRepo: "imladris",
     } as never);
-    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, req?: RequestInit) => {
       const href = String(url);
       if (href.includes("posthog.com")) {
+        const body = typeof req?.body === "string" ? req.body : "";
+        if (body.includes("GROUP BY event")) {
+          return new Response(JSON.stringify({
+            columns: ["event", "count"],
+            results: [["activation_completed", 1]],
+          }), { status: 200 });
+        }
         return new Response(JSON.stringify({
-          results: [
-            {
-              id: "evt_1",
-              event: "activation_completed",
-              distinct_id: "acct_1",
-              timestamp: "2025-03-14T10:00:00.000Z",
-              properties: { companyId: "acct_1" },
-            },
-          ],
+          columns: ["uuid", "event", "timestamp", "distinct_id"],
+          results: [["evt_1", "activation_completed", "2025-03-14 10:00:00", "acct_1"]],
         }), { status: 200 });
       }
       if (href.includes("linear.app")) {
@@ -943,8 +943,9 @@ describe("analytics monthly financial history refresh", () => {
 
     expect(result.failureCount).toBe(0);
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/api/projects/12345/events"),
+      expect.stringContaining("/api/projects/12345/query/"),
       expect.objectContaining({
+        method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer phx_test",
         }),
