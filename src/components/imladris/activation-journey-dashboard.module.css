@@ -1,0 +1,1588 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Activation Journey Dashboard — CSS Module
+   Three-view tabbed dashboard: Journey Flow · Diagnostics · Segments
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+
+.root {
+  --accent: #fc5a29;
+  --bg: #ffffff;
+  --bg-subtle: #f6f7f9;
+  --border: #e7e9ee;
+  --border-strong: #d9dce3;
+  --fg: #16181d;
+  --muted: #6b7280;
+  --muted-2: #9aa1ac;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", "Cascadia Mono",
+    "Roboto Mono", Menlo, Consolas, monospace;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --danger-bg: #fee2e2;
+  --danger-text: #991b1b;
+  --info-bg: #dbeafe;
+  --info-text: #1e40af;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-subtle);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Shell: topbar ─────────────────────────────────────────────────────── */
+
+.topbar {
+  height: 52px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.titleBlock h1 {
+  margin: 1px 0 0;
+  font-size: 16px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.topbarSpacer {
+  flex: 1 1 auto;
+}
+
+/* ── Shared: segmented control ─────────────────────────────────────────── */
+
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 9px;
+}
+
+.seg button {
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.seg button:hover {
+  background: #f3f4f6;
+  color: var(--fg);
+}
+
+.segActive {
+  background: #111827 !important;
+  color: #fff !important;
+}
+
+.segLight {
+  border-color: transparent;
+  background: var(--bg-subtle);
+}
+
+/* ── Shared: badge ─────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.badgeSuccess {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+
+.badgeWarning {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+
+.badgeDanger {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
+/* ── Shared: mono ──────────────────────────────────────────────────────── */
+
+.mono {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* ── Shell: scroll + view ──────────────────────────────────────────────── */
+
+.scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.viewPane {
+  animation: viewIn 0.18s ease-out;
+}
+
+@keyframes viewIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.canvas {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 22px 24px 64px;
+}
+
+/* ── Shared: panel ─────────────────────────────────────────────────────── */
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelTitle {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.panelSub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.panelTag {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  letter-spacing: 0.04em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Journey Flow view
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* KPI strip */
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpiCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kpiLabel {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.kpiValue {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.kpiAccent {
+  color: var(--accent);
+}
+
+.kpiSub {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* Activation definition bar */
+
+.actBar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.actBarLabel {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.actSelect {
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.actBarMeta {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Observation chips */
+
+.obsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.obsCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.obsTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.obsIconInfo {
+  color: var(--info-text);
+  display: flex;
+}
+
+.obsIconWarn {
+  color: var(--warning-text);
+  display: flex;
+}
+
+.obsBadge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.obsBadgeInfo {
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+
+.obsBadgeWarn {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+
+.obsDetail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Sankey panel */
+
+.sankeyPanel {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.sankeyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sankeyTitle {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sankeySub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.sankeyControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sourceToggleOn,
+.sourceToggleOff {
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.sourceToggleOn {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
+.sourceToggleOff {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.sourceToggleOff:hover {
+  background: #f3f4f6;
+  color: var(--fg);
+}
+
+.sankeyBody {
+  position: relative;
+  padding: 8px 14px 14px;
+  min-height: 120px;
+}
+
+.tracePill {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 2;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg);
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.traceX {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.sankeyLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* Sankey tooltip */
+
+.sankeyTip {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  padding: 8px 10px;
+  background: #111827;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 11px;
+  min-width: 110px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.tipTitle {
+  font-weight: 800;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.tipRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1px 0;
+  color: #cbd5e1;
+}
+
+.tipVal {
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* Flow bottom — sequential funnel + friction (2-column) */
+
+.flowBottom {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 12px;
+}
+
+/* Sequential funnel */
+
+.funnelBody {
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.funnelRowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.funnelLabel {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.funnelCount {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.funnelPct {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.funnelBarRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.funnelTrack {
+  flex: 1;
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.funnelGhost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.05) 3px,
+    rgba(0, 0, 0, 0.05) 6px
+  );
+  border-radius: inherit;
+}
+
+.funnelFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.funnelNote {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+}
+
+/* Friction by stage */
+
+.frictionBody {
+  padding: 10px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.frictionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.frictionLabel {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.frictionTags {
+  display: flex;
+  gap: 5px;
+}
+
+.frictionTagRage {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.frictionTagDead {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.frictionTagOff {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted-2);
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Diagnostics view
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Health strip */
+
+.healthGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.healthCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.healthLabel {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.healthValue {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.healthSub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Diagnostic panel */
+
+.diagPanel {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.diagHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diagControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Diagnostic rows (funnel mode) */
+
+.diagRows {
+  padding: 8px 0;
+}
+
+.diagRow {
+  border-bottom: 1px solid var(--border);
+}
+
+.diagRow:last-child {
+  border-bottom: 0;
+}
+
+.diagRowHead {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1.3fr) minmax(120px, 1fr) 60px 54px minmax(80px, auto) 20px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.diagRowHead:hover {
+  background: var(--bg-subtle);
+}
+
+.diagIndex {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.diagInfo {
+  min-width: 0;
+}
+
+.diagLabel {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.diagEv {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Diagnostic bar */
+
+.diagBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagBarTrack {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.diagBarFill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.diagActors {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: right;
+}
+
+.diagConv {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.diagT2c {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.diagFriction {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.diagChevron {
+  font-size: 10px;
+  color: var(--muted-2);
+  transition: transform 0.15s;
+  text-align: center;
+}
+
+/* Diagnostic sub-stages */
+
+.diagSubs {
+  padding: 6px 14px 14px 62px;
+  display: grid;
+  gap: 4px;
+}
+
+.diagSubRow {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1.4fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.diagSubDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.diagSubLabel {
+  font-weight: 700;
+}
+
+.diagSubKind {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--info-text);
+  background: var(--info-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.diagSubMetric {
+  justify-self: end;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* Diag bottom — taxonomy + where it leaks */
+
+.diagBottom {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 12px;
+}
+
+/* Event taxonomy table */
+
+.taxScroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 440px;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.table th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-weight: 800;
+  background: #fafafa;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.eventName {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: #111827;
+  font-size: 11.5px;
+}
+
+.taxMapMs {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.taxMapSub {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--info-text);
+  background: var(--info-bg);
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.taxMapNone {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted-2);
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* Where it leaks */
+
+.leakBody {
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.leakRow {
+  display: grid;
+  gap: 4px;
+}
+
+.leakTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.leakLabel {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leakLost {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--danger-text);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.leakBar {
+  height: 6px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.leakFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--danger-text);
+  opacity: 0.6;
+  transition: width 0.2s ease;
+}
+
+.leakPct {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Segments view
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.segLayout {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 22px 24px 64px;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 16px;
+}
+
+/* Filter rail (sidebar) */
+
+.filterRail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 4px;
+}
+
+.filterLabel {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.filterButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.filterBtn,
+.filterBtnActive {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.filterBtn:hover {
+  background: var(--bg-subtle);
+  color: var(--fg);
+}
+
+.filterBtnActive {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
+.filterSelect {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.filterHelp {
+  font-size: 11px;
+  color: var(--muted-2);
+  line-height: 1.45;
+}
+
+/* Segment main */
+
+.segMain {
+  display: grid;
+  gap: 14px;
+}
+
+/* Segment comparison table */
+
+.segTableWrap {
+  padding: 0;
+}
+
+.segTableHead {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.2fr) minmax(80px, 1fr) minmax(100px, 1.1fr) 54px 54px;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  background: #fafafa;
+}
+
+.segTableRow {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.2fr) minmax(80px, 1fr) minmax(100px, 1.1fr) 54px 54px;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+
+.segTableRow:last-child {
+  border-bottom: 0;
+}
+
+.segName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.segDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.segNameText {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.segActors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segActorBar {
+  flex: 1;
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.segActorFill {
+  height: 100%;
+  background: var(--fg);
+  opacity: 0.25;
+  border-radius: inherit;
+}
+
+.segMiniFunnel {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+}
+
+.segMiniBar {
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+}
+
+.segRate {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.segMedian {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* Segment bottom */
+
+.segBottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+/* Time to convert */
+
+.t2cBody {
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.t2cRow {
+  display: grid;
+  gap: 4px;
+}
+
+.t2cTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.t2cLabel {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.t2cVal {
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.t2cBar {
+  height: 5px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.t2cFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  opacity: 0.55;
+  transition: width 0.2s ease;
+}
+
+/* Actor journey cards */
+
+.actorList {
+  padding: 10px 14px;
+  display: grid;
+  gap: 6px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.actorCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.actorCard:hover {
+  border-color: var(--border-strong);
+}
+
+.actorTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.actorId {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.actorSource {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.actorSrcDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.actorFurthest {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.actorChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.actorChip {
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.actorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.actorAction {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.actorAction:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1180px) {
+  .kpiGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .healthGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flowBottom,
+  .diagBottom {
+    grid-template-columns: 1fr;
+  }
+
+  .segBottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    align-items: flex-start;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .titleBlock h1 {
+    font-size: 14px;
+  }
+
+  .topbarSpacer {
+    display: none;
+  }
+
+  .seg button {
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .canvas {
+    padding: 16px 12px 42px;
+  }
+
+  .kpiGrid,
+  .healthGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kpiValue {
+    font-size: 20px;
+  }
+
+  .healthValue {
+    font-size: 18px;
+  }
+
+  .actBar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .obsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sankeyBody {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 0 14px;
+  }
+
+  .sankeyHeader {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .segLayout {
+    grid-template-columns: 1fr;
+    padding: 16px 12px 42px;
+  }
+
+  .filterRail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .filterButtons {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .filterBtn,
+  .filterBtnActive {
+    width: auto;
+  }
+
+  .diagRowHead {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 10px 10px;
+    font-size: 11px;
+  }
+
+  .diagSubs {
+    padding: 6px 10px 14px 44px;
+  }
+
+  .diagSubRow {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .diagSubKind {
+    display: none;
+  }
+
+  .diagBottom {
+    grid-template-columns: 1fr;
+  }
+
+  .segTableHead,
+  .segTableRow {
+    grid-template-columns: minmax(80px, 1fr) 54px 54px;
+  }
+
+  .segActors,
+  .segMiniFunnel {
+    display: none;
+  }
+
+  .segBottom {
+    grid-template-columns: 1fr;
+  }
+
+  .actorList {
+    max-height: none;
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .kpiGrid,
+  .healthGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiCard,
+  .healthCard {
+    padding: 10px;
+  }
+
+  .kpiValue {
+    font-size: 22px;
+  }
+
+  .canvas {
+    padding: 12px 10px 42px;
+  }
+
+  .segLayout {
+    padding: 12px 10px 42px;
+  }
+
+  .diagRowHead {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .diagBar,
+  .diagConv,
+  .diagT2c,
+  .diagFriction {
+    display: none;
+  }
+
+  .diagSubs {
+    padding-left: 36px;
+  }
+}
