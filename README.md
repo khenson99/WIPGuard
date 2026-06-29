@@ -103,6 +103,7 @@ Ops:
 
 - Run `npm run ops:ads-preflight` to validate required ad analytics environment variables.
 - Follow `docs/runbooks/ads-analytics-rollout.md` for staging/production rollout.
+- Use `npm run backfill:webflow-cta-posthog` for the supported Webflow CTA to PostHog backfill. Dry run is the default; the live mode requires `POSTHOG_PROJECT_API_KEY`. See `docs/runbooks/webflow-cta-posthog-backfill.md`.
 
 ## OAuth callback URLs
 

@@ -5837,6 +5837,7 @@ const POSTHOG_MARKETING_CONVERSION_EVENT_KEYS = new Set([
   "formsubmitted",
   "leadconverted",
   "leadcreated",
+  "marketingctaclicked",
   "requestdemo",
   "signup",
   "signedup",

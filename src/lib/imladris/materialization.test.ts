@@ -18384,6 +18384,21 @@ describe("Imladris canonical materialization", () => {
               distinct_id: "visitor_1",
             },
           },
+          {
+            id: "raw_posthog_marketing_cta",
+            provider: IntegrationProvider.POSTHOG,
+            objectType: "event",
+            externalId: "posthog:event:marketing-cta",
+            occurredAt: new Date("2026-05-14T00:00:00.000Z"),
+            sourceCreatedAt: null,
+            sourceUpdatedAt: new Date("2026-05-14T00:00:00.000Z"),
+            payload: {
+              eventId: "evt_marketing_cta",
+              event: "marketing_cta_clicked",
+              timestamp: "2026-05-14T00:00:00.000Z",
+              distinct_id: "visitor_2",
+            },
+          },
         ]),
       },
       imladrisCanonicalMetricValue: {
@@ -18417,7 +18432,7 @@ describe("Imladris canonical materialization", () => {
     );
     expect(result.value).toMatchObject({
       posthogPageviews: 2,
-      posthogConversions: 1,
+      posthogConversions: 2,
     });
     expect(prisma.imladrisCanonicalMetricValue.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -18445,10 +18460,10 @@ describe("Imladris canonical materialization", () => {
         }),
         create: expect.objectContaining({
           value: expect.objectContaining({
-            rate: 50,
-            conversions: 1,
+            rate: 100,
+            conversions: 2,
             websiteSessions: 2,
-            posthogConversions: 1,
+            posthogConversions: 2,
           }),
         }),
       }),
@@ -18466,6 +18481,12 @@ describe("Imladris canonical materialization", () => {
           sourceKey: "posthog",
           sourceType: "event",
           sourceId: "posthog:event:demo-booked",
+        }),
+        expect.objectContaining({
+          rawRecordId: "raw_posthog_marketing_cta",
+          sourceKey: "posthog",
+          sourceType: "event",
+          sourceId: "posthog:event:marketing-cta",
         }),
       ]),
     });
