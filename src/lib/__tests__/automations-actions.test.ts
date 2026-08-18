@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskStatus } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
+import {
+  createAirtableTaskRecord,
+  getAirtableTaskConfigForUser,
+  updateAirtableTaskRecord,
+} from "@/lib/integrations/airtable";
 import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +31,15 @@ vi.mock("@/lib/integrations/token-refresh", () => ({
   getValidIntegrationAccessToken: vi.fn(),
 }));
 
+vi.mock("@/lib/integrations/airtable", () => ({
+  createAirtableTaskRecord: vi.fn(),
+  getAirtableTaskConfigForUser: vi.fn(),
+  isAirtableRecordId: vi.fn((value: string | null | undefined) =>
+    typeof value === "string" && value.startsWith("rec")
+  ),
+  updateAirtableTaskRecord: vi.fn(),
+}));
+
 vi.mock("@/lib/integrations/http-client", () => ({
   fetchJsonWithResilience: vi.fn(),
   fetchWithResilience: vi.fn(),
@@ -38,6 +52,7 @@ vi.mock("@/lib/integrations/slack-notifications", () => ({
 describe("automation actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue(null);
     vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
       requestedById: "user_1",
       workflow: {
@@ -86,6 +101,51 @@ describe("automation actions", () => {
     });
   });
 
+  it("creates Airtable records when Airtable task config is available", async () => {
+    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue({
+      token: "pat123",
+      baseId: "app123",
+      tableName: "Tasks",
+      titleField: "Title",
+      notesField: "Notes",
+      statusField: "Status",
+      priorityField: "Priority",
+      projectIdField: "Project ID",
+      responsibleIdField: "Responsible ID",
+      automationRunIdField: "Automation Run ID",
+      automationActionField: "Automation Action",
+    });
+    vi.mocked(createAirtableTaskRecord).mockResolvedValue({
+      id: "rec1234567890",
+      title: "Follow up",
+    });
+
+    const result = await executeAutomationAction({
+      runId: "run_1",
+      actionType: "create_task",
+      actionPayload: {
+        title: "Follow up",
+        status: "active",
+      },
+    });
+
+    expect(createAirtableTaskRecord).toHaveBeenCalledWith({
+      userId: "user_1",
+      runId: "run_1",
+      payload: {
+        title: "Follow up",
+        status: "active",
+      },
+    });
+    expect(prisma.task.create).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      actionType: "create_task",
+      status: "executed",
+      targetId: "rec1234567890",
+      detail: "Follow up",
+    });
+  });
+
   it("updates tasks with only normalized fields", async () => {
     vi.mocked(prisma.task.update).mockResolvedValue({
       id: "task_2",
@@ -115,6 +175,55 @@ describe("automation actions", () => {
       actionType: "update_task",
       status: "executed",
       targetId: "task_2",
+      detail: "Renamed",
+    });
+  });
+
+  it("updates Airtable-backed tasks when the task id is an Airtable record id", async () => {
+    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue({
+      token: "pat123",
+      baseId: "app123",
+      tableName: "Tasks",
+      titleField: "Title",
+      notesField: "Notes",
+      statusField: "Status",
+      priorityField: "Priority",
+      projectIdField: "Project ID",
+      responsibleIdField: "Responsible ID",
+      automationRunIdField: "Automation Run ID",
+      automationActionField: "Automation Action",
+    });
+    vi.mocked(updateAirtableTaskRecord).mockResolvedValue({
+      id: "rec9876543210",
+      title: "Renamed",
+    });
+
+    const result = await executeAutomationAction({
+      runId: "run_1",
+      actionType: "update_task",
+      actionPayload: {
+        runId: "run_1",
+        taskId: "rec9876543210",
+        title: " Renamed ",
+        status: "done",
+      },
+    });
+
+    expect(updateAirtableTaskRecord).toHaveBeenCalledWith({
+      userId: "user_1",
+      recordId: "rec9876543210",
+      payload: {
+        runId: "run_1",
+        taskId: "rec9876543210",
+        title: " Renamed ",
+        status: "done",
+      },
+    });
+    expect(prisma.task.update).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      actionType: "update_task",
+      status: "executed",
+      targetId: "rec9876543210",
       detail: "Renamed",
     });
   });

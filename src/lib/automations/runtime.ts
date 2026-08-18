@@ -29,7 +29,10 @@ import {
   unwrapAutomationOpenAiWebhookEvent,
 } from "@/lib/automations/openai";
 import { executeApprovedRecommendationsForRun } from "@/lib/automations/recommendations";
-import { normalizeWorkflowRolePolicy } from "@/lib/automations/service";
+import {
+  integrationProviderFromString,
+  normalizeWorkflowRolePolicy,
+} from "@/lib/automations/service";
 import {
   buildRunExecutionContext,
   materializeSourceDocumentsFromTrigger,
@@ -941,12 +944,14 @@ export async function executeWorkflowRun(runId: string): Promise<void> {
 function matchesTrigger(triggerConfig: Record<string, unknown>, event: TriggerEnvelope): boolean {
   const configuredProvider =
     typeof triggerConfig.provider === "string"
-      ? triggerConfig.provider.trim().toUpperCase()
+      ? integrationProviderFromString(triggerConfig.provider)
       : null;
+  const eventProvider =
+    integrationProviderFromString(event.provider) ?? event.provider;
   const configuredEventType =
     typeof triggerConfig.eventType === "string" ? triggerConfig.eventType.trim() : null;
 
-  if (configuredProvider && configuredProvider !== event.provider) {
+  if (configuredProvider && configuredProvider !== eventProvider) {
     return false;
   }
 
@@ -957,11 +962,22 @@ function matchesTrigger(triggerConfig: Record<string, unknown>, event: TriggerEn
   return true;
 }
 
+function compatibleTriggerProviders(provider: IntegrationProvider): IntegrationProvider[] {
+  if (provider === IntegrationProvider.AIRTABLE || provider === IntegrationProvider.WIPGUARD) {
+    return [IntegrationProvider.AIRTABLE, IntegrationProvider.WIPGUARD];
+  }
+  return [provider];
+}
+
 async function triggerMatchingWorkflows(event: TriggerEnvelope): Promise<number> {
+  const providers = compatibleTriggerProviders(event.provider);
   const workflows = await prisma.workflowDefinition.findMany({
     where: {
       status: "ACTIVE",
-      OR: [{ providers: { has: event.provider } }, { providers: { isEmpty: true } }],
+      OR: [
+        ...providers.map((provider) => ({ providers: { has: provider } })),
+        { providers: { isEmpty: true } },
+      ],
     },
   });
 

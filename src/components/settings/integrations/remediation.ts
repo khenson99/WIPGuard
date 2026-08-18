@@ -115,6 +115,14 @@ export function buildRemediationSteps(input: {
     });
   }
 
+  if (item.slug === "airtable" && item.connected && (!item.baseId || !item.tableName)) {
+    steps.push({
+      id: "airtable-config",
+      title: "Airtable base or table is missing",
+      detail: "Add an Airtable Base ID and table name, then save to enable Airtable-backed task execution.",
+    });
+  }
+
   if (
     (item.slug === "stripe" || item.slug === "mercury" || item.slug === "reddit") &&
     item.credentialSource !== "connection"

@@ -1,4 +1,5 @@
 import { IntegrationConnectionStatus, IntegrationProvider } from "@/generated/prisma/client";
+import { verifyAirtableConnection } from "@/lib/integrations/airtable";
 import { prisma } from "@/lib/prisma";
 import { unprotectIntegrationSecret } from "@/lib/integrations/token-crypto";
 import { verifyCodaApiToken, verifyPylonApiToken } from "@/lib/integrations/oauth";
@@ -88,6 +89,15 @@ export async function runIntegrationHealthChecks(input: { userId: string }): Pro
         await checkSlack(token);
       } else if (connection.provider === IntegrationProvider.CODA) {
         await verifyCodaApiToken(token);
+      } else if (connection.provider === IntegrationProvider.AIRTABLE) {
+        const metadata =
+          connection.metadata && typeof connection.metadata === "object" && !Array.isArray(connection.metadata)
+            ? (connection.metadata as Record<string, unknown>)
+            : {};
+        const baseId = typeof metadata.baseId === "string" ? metadata.baseId.trim() : "";
+        const tableName =
+          typeof metadata.tableName === "string" ? metadata.tableName.trim() : "";
+        await verifyAirtableConnection({ token, baseId, tableName });
       } else if (connection.provider === IntegrationProvider.PYLON) {
         await verifyPylonApiToken(token);
       } else {

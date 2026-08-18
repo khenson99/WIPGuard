@@ -1,4 +1,10 @@
 import { IntegrationProvider, TaskStatus, type Prisma } from "@/generated/prisma/client";
+import {
+  createAirtableTaskRecord,
+  getAirtableTaskConfigForUser,
+  isAirtableRecordId,
+  updateAirtableTaskRecord,
+} from "@/lib/integrations/airtable";
 import { prisma } from "@/lib/prisma";
 import { sendSlackDirectMessage } from "@/lib/integrations/slack-notifications";
 import { getValidIntegrationAccessToken } from "@/lib/integrations/token-refresh";
@@ -196,6 +202,23 @@ async function resolveAutomationActor(runId: string): Promise<string> {
 
 async function createTaskFromAction(runId: string, payload: Record<string, unknown>) {
   const actorUserId = await resolveAutomationActor(runId);
+  const airtableConfig = await getAirtableTaskConfigForUser(actorUserId);
+
+  if (airtableConfig) {
+    const task = await createAirtableTaskRecord({
+      userId: actorUserId,
+      runId,
+      payload,
+    });
+
+    return {
+      actionType: "create_task",
+      status: "executed" as const,
+      targetId: task.id,
+      detail: task.title,
+    };
+  }
+
   const title = asString(payload.title) ?? "Automation task";
   const notes = asString(payload.notes);
   const priority = asString(payload.priority) ?? "P2";
@@ -253,6 +276,27 @@ async function updateTaskFromAction(payload: Record<string, unknown>) {
   const title = asString(payload.title);
   const notes = asString(payload.notes);
   const status = asString(payload.status);
+  const runId = asString(payload.runId) ?? asString(payload.workflowRunId);
+  const actorUserId = runId ? await resolveAutomationActor(runId).catch(() => null) : null;
+  const airtableRecordId = asString(payload.airtableRecordId) ?? taskId;
+  if (actorUserId && isAirtableRecordId(airtableRecordId)) {
+    const airtableConfig = await getAirtableTaskConfigForUser(actorUserId);
+    if (airtableConfig) {
+      const task = await updateAirtableTaskRecord({
+        userId: actorUserId,
+        recordId: airtableRecordId,
+        payload,
+      });
+
+      return {
+        actionType: "update_task",
+        status: "executed" as const,
+        targetId: task.id,
+        detail: task.title,
+      };
+    }
+  }
+
   const data: Prisma.TaskUpdateInput = {};
 
   if (title) {

@@ -65,6 +65,13 @@ vi.mock("@/lib/automations/recommendations", () => ({
 }));
 
 vi.mock("@/lib/automations/service", () => ({
+  integrationProviderFromString: vi.fn((value: string | null | undefined) => {
+    const normalized = value?.trim().toUpperCase();
+    if (normalized === "WIPGUARD" || normalized === "AIRTABLE") {
+      return "AIRTABLE";
+    }
+    return normalized ?? null;
+  }),
   normalizeWorkflowRolePolicy: vi.fn(() => ({
     approveRoles: ["admin", "member"],
   })),

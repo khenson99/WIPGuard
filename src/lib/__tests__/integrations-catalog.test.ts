@@ -51,14 +51,16 @@ describe("integrations catalog", () => {
     expect(webflow?.oauth?.scopes).toContain("sites:read");
   });
 
-  it("includes google search console and wipguard in definitions", () => {
+  it("includes google search console and airtable in definitions", () => {
     const gsc = getIntegrationBySlug("google-search-console");
-    const wipguard = getIntegrationBySlug("wipguard");
+    const airtable = getIntegrationBySlug("airtable");
+    const legacyAlias = getIntegrationBySlug("wipguard");
 
     expect(gsc).not.toBeNull();
     expect(gsc?.provider).toBe("GOOGLE_SEARCH_CONSOLE");
-    expect(wipguard).not.toBeNull();
-    expect(wipguard?.provider).toBe("WIPGUARD");
+    expect(airtable).not.toBeNull();
+    expect(airtable?.provider).toBe("AIRTABLE");
+    expect(legacyAlias?.provider).toBe("AIRTABLE");
   });
 
   it("accepts legacy Meta env aliases for OAuth client credentials", () => {

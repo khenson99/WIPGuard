@@ -55,6 +55,10 @@ vi.mock("@/lib/integrations/oauth", () => ({
   verifyPylonApiToken: vi.fn(async () => {}),
 }));
 
+vi.mock("@/lib/integrations/airtable", () => ({
+  verifyAirtableConnection: vi.fn(async () => {}),
+}));
+
 const mockGetValidToken = vi.fn();
 vi.mock("@/lib/integrations/token-refresh", () => ({
   getValidIntegrationAccessToken: (...args: unknown[]) => mockGetValidToken(...args),
@@ -63,7 +67,7 @@ vi.mock("@/lib/integrations/token-refresh", () => ({
 vi.mock("@/lib/integrations/provider-registry", () => ({
   getProviderRegistryEntry: vi.fn((provider: string) => {
     const oauthProviders = ["HUBSPOT", "SLACK", "STRIPE", "MERCURY", "GOOGLE_ADS", "META_ADS", "META_PAGE", "REDDIT", "WEBFLOW", "GOOGLE_WORKSPACE"];
-    const tokenProviders = ["CODA", "PYLON", "SEMRUSH"];
+    const tokenProviders = ["CODA", "AIRTABLE", "PYLON", "SEMRUSH"];
     if (oauthProviders.includes(provider)) return { authType: "oauth" };
     if (tokenProviders.includes(provider)) return { authType: "token" };
     return null;

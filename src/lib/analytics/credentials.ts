@@ -80,6 +80,11 @@ export interface AnalyticsCredentials {
   codaApiToken: string | null;
   codaDocId: string | null;
 
+  // Airtable
+  airtableApiToken: string | null;
+  airtableBaseId: string | null;
+  airtableTableName: string | null;
+
   // Pylon
   pylonApiKey: string | null;
   pylonBaseUrl: string | null;
@@ -104,6 +109,12 @@ export function hasIntegrationCredential(
       return hasValue(credentials.slackAccessToken);
     case IntegrationProvider.CODA:
       return hasValue(credentials.codaApiToken);
+    case IntegrationProvider.AIRTABLE:
+      return Boolean(
+        hasValue(credentials.airtableApiToken) &&
+          hasValue(credentials.airtableBaseId) &&
+          hasValue(credentials.airtableTableName)
+      );
     case IntegrationProvider.REDDIT:
       return hasValue(credentials.redditRefreshToken);
     case IntegrationProvider.GOOGLE_ANALYTICS:
@@ -659,6 +670,7 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const hubspotConnection = byProvider.get(IntegrationProvider.HUBSPOT) ?? null;
   const codaConnection = byProvider.get(IntegrationProvider.CODA) ?? null;
+  const airtableConnection = byProvider.get(IntegrationProvider.AIRTABLE) ?? null;
   const redditConnection = byProvider.get(IntegrationProvider.REDDIT) ?? null;
   const googleWorkspaceConnection = byProvider.get(IntegrationProvider.GOOGLE_WORKSPACE) ?? null;
   const slackConnection = byProvider.get(IntegrationProvider.SLACK) ?? null;
@@ -672,6 +684,9 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
 
   const envHubspot = envOrNull(process.env.HUBSPOT_ACCESS_TOKEN);
   const envCoda = envOrNull(process.env.CODA_API_TOKEN);
+  const envAirtable = envOrNull(process.env.AIRTABLE_API_TOKEN);
+  const envAirtableBaseId = envOrNull(process.env.AIRTABLE_BASE_ID);
+  const envAirtableTableName = envOrNull(process.env.AIRTABLE_TABLE_NAME);
   const envRedditRefresh = envOrNull(process.env.REDDIT_REFRESH_TOKEN);
   const envStripe = envOrNull(process.env.STRIPE_SECRET_KEY);
   const envMercury = envOrNull(process.env.MERCURY_API_TOKEN);
@@ -702,6 +717,18 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
   const usingCodaEnvFallback =
     Boolean(envCoda) &&
     (!codaConnection || codaConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+
+  const airtableApiToken =
+    airtableConnection && airtableConnection.status !== IntegrationConnectionStatus.DISCONNECTED
+      ? unprotectIntegrationSecret(airtableConnection.accessToken)
+      : envAirtable;
+  const usingAirtableEnvFallback =
+    Boolean(envAirtable) &&
+    (!airtableConnection || airtableConnection.status === IntegrationConnectionStatus.DISCONNECTED);
+  const airtableBaseId =
+    metadataString(airtableConnection?.metadata, "baseId") ?? envAirtableBaseId;
+  const airtableTableName =
+    metadataString(airtableConnection?.metadata, "tableName") ?? envAirtableTableName;
 
   const redditRefreshToken =
     redditConnection && redditConnection.status !== IntegrationConnectionStatus.DISCONNECTED
@@ -942,6 +969,11 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       codaConnection,
       usingCodaEnvFallback
     ),
+    [IntegrationProvider.AIRTABLE]: buildFreshness(
+      IntegrationProvider.AIRTABLE,
+      airtableConnection,
+      usingAirtableEnvFallback
+    ),
     [IntegrationProvider.REDDIT]: buildFreshness(
       IntegrationProvider.REDDIT,
       redditConnection,
@@ -1044,6 +1076,10 @@ export async function getCredentials(userId?: string): Promise<AnalyticsCredenti
       envOrNull(process.env.CODA_DOC_ID) ??
       metadataString(codaConnection?.metadata, "docId") ??
       null,
+
+    airtableApiToken,
+    airtableBaseId,
+    airtableTableName,
 
     pylonApiKey,
     pylonBaseUrl,

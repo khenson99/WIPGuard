@@ -868,6 +868,7 @@ enum IntegrationProvider {
   GOOGLE_ANALYTICS
   GOOGLE_SEARCH_CONSOLE
   WIPGUARD
+  AIRTABLE
 }
 
 enum IntegrationConnectionStatus {

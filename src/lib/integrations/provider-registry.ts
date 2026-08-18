@@ -50,6 +50,15 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
     aliases: [],
   },
   {
+    provider: IntegrationProvider.AIRTABLE,
+    slug: "airtable",
+    authType: "token",
+    snapshotKeys: ["airtable", "internalAutomation"],
+    settingsVisible: true,
+    envManaged: true,
+    aliases: ["air_table", "wipguard", "wip_guard"],
+  },
+  {
     provider: IntegrationProvider.REDDIT,
     slug: "reddit",
     authType: "oauth",
@@ -150,12 +159,12 @@ const INTEGRATION_PROVIDER_REGISTRY: readonly IntegrationProviderRegistryEntry[]
   },
   {
     provider: IntegrationProvider.WIPGUARD,
-    slug: "wipguard",
+    slug: "legacy-wipguard",
     authType: "token",
-    snapshotKeys: ["wipguard", "internalAutomation"],
+    snapshotKeys: ["wipguard"],
     settingsVisible: false,
     envManaged: true,
-    aliases: ["wip_guard"],
+    aliases: [],
   },
 ] as const;
 

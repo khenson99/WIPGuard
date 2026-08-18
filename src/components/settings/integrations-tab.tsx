@@ -107,6 +107,10 @@ export function IntegrationsTab() {
   const [codaToken, setCodaToken] = useState("");
   const [codaDocInput, setCodaDocInput] = useState("");
 
+  const [airtableToken, setAirtableToken] = useState("");
+  const [airtableBaseId, setAirtableBaseId] = useState("");
+  const [airtableTableName, setAirtableTableName] = useState("");
+
   const [semrushToken, setSemrushToken] = useState("");
   const [semrushDomain, setSemrushDomain] = useState("");
 
@@ -172,6 +176,10 @@ export function IntegrationsTab() {
 
       const coda = integrations.find((item) => item.slug === "coda");
       setCodaDocInput(coda?.docId ?? "");
+
+      const airtable = integrations.find((item) => item.slug === "airtable");
+      setAirtableBaseId(airtable?.baseId ?? "");
+      setAirtableTableName(airtable?.tableName ?? "");
 
       const pylon = integrations.find((item) => item.slug === "pylon");
       const storedBaseUrl = asRecord(pylon?.metadata ?? null).baseUrl;
@@ -412,6 +420,52 @@ export function IntegrationsTab() {
       setLoadingProviderAction(null);
     }
   }, [codaDocInput, codaToken, fetchIntegrations]);
+
+  const connectAirtable = useCallback(async () => {
+    setLoadingProviderAction("airtable");
+    setError(null);
+
+    try {
+      const token = airtableToken.trim();
+      const baseId = airtableBaseId.trim();
+      const tableName = airtableTableName.trim();
+      const payload: { token?: string; baseId?: string; tableName?: string } = {};
+
+      if (token) payload.token = token;
+      if (baseId) payload.baseId = baseId;
+      if (tableName) payload.tableName = tableName;
+
+      const response = await fetch("/api/integrations/airtable/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorMessage(response, "Failed to connect Airtable"));
+      }
+
+      const successPayload = (await response.json().catch(() => null)) as
+        | { baseId?: string | null; tableName?: string | null }
+        | null;
+
+      setAirtableToken("");
+      if (typeof successPayload?.baseId === "string") {
+        setAirtableBaseId(successPayload.baseId);
+      }
+      if (typeof successPayload?.tableName === "string") {
+        setAirtableTableName(successPayload.tableName);
+      }
+
+      await fetchIntegrations();
+    } catch (connectError) {
+      setError(
+        connectError instanceof Error ? connectError.message : "Failed to connect Airtable"
+      );
+    } finally {
+      setLoadingProviderAction(null);
+    }
+  }, [airtableBaseId, airtableTableName, airtableToken, fetchIntegrations]);
 
   const connectSemrush = useCallback(async () => {
     setLoadingProviderAction("semrush");
@@ -720,6 +774,13 @@ export function IntegrationsTab() {
               onCodaTokenChange={setCodaToken}
               onCodaDocChange={setCodaDocInput}
               onConnectCoda={connectCoda}
+              airtableToken={airtableToken}
+              airtableBaseId={airtableBaseId}
+              airtableTableName={airtableTableName}
+              onAirtableTokenChange={setAirtableToken}
+              onAirtableBaseIdChange={setAirtableBaseId}
+              onAirtableTableNameChange={setAirtableTableName}
+              onConnectAirtable={connectAirtable}
               semrushToken={semrushToken}
               semrushDomain={semrushDomain}
               onSemrushTokenChange={setSemrushToken}

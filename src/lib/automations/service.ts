@@ -58,6 +58,9 @@ export function integrationProviderFromString(
       return IntegrationProvider.SLACK;
     case "CODA":
       return IntegrationProvider.CODA;
+    case "AIRTABLE":
+    case "WIPGUARD":
+      return IntegrationProvider.AIRTABLE;
     case "REDDIT":
       return IntegrationProvider.REDDIT;
     case "STRIPE":
@@ -80,8 +83,6 @@ export function integrationProviderFromString(
       return IntegrationProvider.PYLON;
     case "SEMRUSH":
       return IntegrationProvider.SEMRUSH;
-    case "WIPGUARD":
-      return IntegrationProvider.WIPGUARD;
     default:
       return null;
   }

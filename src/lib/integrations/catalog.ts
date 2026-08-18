@@ -13,6 +13,7 @@ export type IntegrationSlug =
   | "mercury"
   | "webflow"
   | "coda"
+  | "airtable"
   | "reddit"
   | "google-analytics"
   | "google-ads"
@@ -20,8 +21,7 @@ export type IntegrationSlug =
   | "meta-page"
   | "pylon"
   | "semrush"
-  | "google-search-console"
-  | "wipguard";
+  | "google-search-console";
 export type IntegrationAuthType = "oauth" | "token";
 
 interface OAuthSettings {
@@ -206,6 +206,15 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     authType: "token",
   },
   {
+    slug: "airtable",
+    provider: IntegrationProvider.AIRTABLE,
+    name: "Airtable",
+    description:
+      "Use Airtable bases as the execution backlog and automation source of truth.",
+    capabilities: ["Bases", "Records", "Task automation"],
+    authType: "token",
+  },
+  {
     slug: "reddit",
     provider: IntegrationProvider.REDDIT,
     name: "Reddit",
@@ -322,14 +331,6 @@ const INTEGRATION_DEFINITIONS: readonly IntegrationDefinition[] = [
     name: "SEMrush",
     description: "Connect SEMrush SEO metrics and keyword ranks into WIPGuard.",
     capabilities: ["Organic Search", "Paid Traffic", "Authority"],
-    authType: "token",
-  },
-  {
-    slug: "wipguard",
-    provider: IntegrationProvider.WIPGUARD,
-    name: "WIPGuard",
-    description: "Use internal WIPGuard workflow and backlog data as an automation source.",
-    capabilities: ["Tasks", "Projects", "Workflow telemetry"],
     authType: "token",
   },
 ] as const;

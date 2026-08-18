@@ -42,6 +42,16 @@ function readCodaDocId(metadata: unknown): string | null {
   return normalizeCodaDocId(candidate);
 }
 
+function readMetadataString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const candidate = (metadata as Record<string, unknown>)[key];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   logIntegrationEnvDiagnostic();
 
@@ -215,6 +225,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         docId:
           definition.provider === IntegrationProvider.CODA
             ? readCodaDocId(connection?.metadata ?? null)
+            : null,
+        baseId:
+          definition.provider === IntegrationProvider.AIRTABLE
+            ? readMetadataString(connection?.metadata ?? null, "baseId") ??
+              process.env.AIRTABLE_BASE_ID?.trim() ??
+              null
+            : null,
+        tableName:
+          definition.provider === IntegrationProvider.AIRTABLE
+            ? readMetadataString(connection?.metadata ?? null, "tableName") ??
+              process.env.AIRTABLE_TABLE_NAME?.trim() ??
+              null
             : null,
       };
     });

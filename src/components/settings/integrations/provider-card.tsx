@@ -73,6 +73,13 @@ interface ProviderCardProps {
   onCodaTokenChange: (value: string) => void;
   onCodaDocChange: (value: string) => void;
   onConnectCoda: () => Promise<void>;
+  airtableToken?: string;
+  airtableBaseId?: string;
+  airtableTableName?: string;
+  onAirtableTokenChange?: (value: string) => void;
+  onAirtableBaseIdChange?: (value: string) => void;
+  onAirtableTableNameChange?: (value: string) => void;
+  onConnectAirtable?: () => Promise<void>;
   semrushToken?: string;
   semrushDomain?: string;
   onSemrushTokenChange?: (value: string) => void;
@@ -125,6 +132,13 @@ export function ProviderCard({
   onCodaTokenChange,
   onCodaDocChange,
   onConnectCoda,
+  airtableToken,
+  airtableBaseId,
+  airtableTableName,
+  onAirtableTokenChange,
+  onAirtableBaseIdChange,
+  onAirtableTableNameChange,
+  onConnectAirtable,
   pylonToken,
   pylonBaseUrl,
   onPylonTokenChange,
@@ -420,6 +434,76 @@ export function ProviderCard({
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">Current doc: {item.docId || "Not configured"}</p>
+            </div>
+          ) : null}
+
+          {item.slug === "airtable" ? (
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-sm font-medium text-foreground">Airtable Task Sink</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Airtable Base ID
+                  <input
+                    type="text"
+                    value={airtableBaseId ?? ""}
+                    onChange={(event) => onAirtableBaseIdChange?.(event.target.value)}
+                    placeholder="appXXXXXXXXXXXXXX"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Airtable Table Name
+                  <input
+                    type="text"
+                    value={airtableTableName ?? ""}
+                    onChange={(event) => onAirtableTableNameChange?.(event.target.value)}
+                    placeholder="Tasks"
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  Airtable API Token (optional if server token exists)
+                  <input
+                    type="password"
+                    value={airtableToken ?? ""}
+                    onChange={(event) => onAirtableTokenChange?.(event.target.value)}
+                    placeholder="pat..."
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={onConnectAirtable}
+                  disabled={!onConnectAirtable || loadingProviderAction === "airtable"}
+                  className="btn-primary-theme rounded-md px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {loadingProviderAction === "airtable" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </span>
+                  ) : item.connected ? (
+                    "Save Airtable Settings"
+                  ) : (
+                    "Connect Airtable"
+                  )}
+                </button>
+                {canDisconnectStoredConnection ? (
+                  <button
+                    type="button"
+                    onClick={() => onDisconnect(item.slug)}
+                    disabled={loadingProviderAction === item.slug}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Current target: {item.baseId && item.tableName ? `${item.baseId} / ${item.tableName}` : "Not configured"}
+              </p>
             </div>
           ) : null}
 

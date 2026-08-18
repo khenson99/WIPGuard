@@ -10,6 +10,7 @@ export type IntegrationSlug =
   | "mercury"
   | "webflow"
   | "coda"
+  | "airtable"
   | "reddit"
   | "google-analytics"
   | "google-search-console"
@@ -17,8 +18,7 @@ export type IntegrationSlug =
   | "google-ads"
   | "meta-ads"
   | "meta-page"
-  | "pylon"
-  | "wipguard";
+  | "pylon";
 
 export interface IntegrationItem {
   slug: IntegrationSlug;
@@ -41,6 +41,8 @@ export interface IntegrationItem {
   lastSnapshotAt: string | null;
   lastSnapshotStatus: "SUCCESS" | "ERROR" | null;
   docId?: string | null;
+  baseId?: string | null;
+  tableName?: string | null;
   metadata?: Record<string, unknown> | null;
 }
 
