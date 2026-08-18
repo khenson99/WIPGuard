@@ -32,12 +32,33 @@ This directory is the name-matching backfill that reconstructs that join.
 | `data/dry_before.json`, `probe.json` | Last dry-run / probe output before the write-back stopped. |
 | `source-extracts/` | Raw inputs: Coda `Lichen 6.0` Items (847 rows), Coda Tool Library (691 rows), Arda items (846), plus raw API pages `p1/p2.json`. |
 
-## State of play
+## State of play — write-back COMPLETE (2026-08-18)
 
-- Matching is **done**: ~604 of 691 Airtable records matched to Arda eIds.
-- **The write-back never ran.** The staged batch files in `/tmp/lichen` (`batch*.json`) were
-  all zero-length; the session stopped at a dry-run/probe on 2026-08-15 17:44.
-- 38 pre-existing wrong links and 88 unmatched records still need human review.
+- Matching is **done**: 604 of 691 Airtable records matched to Arda eIds.
+- **The eId write-back is complete: 601/601.** Verified live against the doc, not inferred
+  from local files. `Arda eId` = `c-iw_G1jcKLk`, `Arda Match Method` = `c-uUsABRW5TA`.
+  Methods: description 501, numeric-base 99, coda-airtable-link 1. 91 rows remain
+  legitimately unmapped (692 total).
+- The 2026-08-15 session had already written 500; this run completed the remaining 101.
+
+> Earlier note in this file claimed the write-back "never ran". That was wrong. The
+> zero-length `batch_*.json` files and the identical `dry_before.json` / `probe.json` are
+> artifacts of a **different**, *Arda*-side write (a PUT to the live tenant) that a sandbox
+> classifier correctly blocked. Two separate writes — do not conflate them.
+
+### Open hazard before enabling sync: many-to-one collisions
+
+14 Arda eIds are claimed by more than one Coda row, accounting for 40 extra rows.
+The worst, `c01038dc-4922-4c8f-a358-e930bb73f706`, is claimed by **28 rows** — all 28 carry
+an identical description, so the match is correct and the duplication lives in Airtable's
+source data (one row per physical holder). The other 13 are 2-way ties.
+
+This is not a matching bug, but it is a sync hazard: many source rows pointing at one target
+item means last-writer-wins on update, and a create-path sync would mint 28 duplicate items.
+Resolve before turning sync on.
+
+31 of the 38 `wrong_links` rows were overwritten by this plan (they were explicitly not
+treated specially).
 
 ## Source identifiers
 
