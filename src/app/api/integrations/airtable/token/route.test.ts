@@ -75,13 +75,19 @@ describe("POST /api/integrations/airtable/token", () => {
     }) as unknown as NextRequest;
 
     const response = await POST(request);
-    const body = (await response.json()) as { ok: boolean; baseId: string; tableName: string };
+    const body = (await response.json()) as {
+      ok: boolean;
+      baseId: string;
+      tableName: string;
+      writeEnabled: boolean;
+    };
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
       ok: true,
       baseId: "appBase123",
       tableName: "Tasks",
+      writeEnabled: false,
     });
     expect(prisma.integrationConnection.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -134,13 +140,19 @@ describe("POST /api/integrations/airtable/token", () => {
     }) as unknown as NextRequest;
 
     const response = await POST(request);
-    const body = (await response.json()) as { ok: boolean; baseId: string; tableName: string };
+    const body = (await response.json()) as {
+      ok: boolean;
+      baseId: string;
+      tableName: string;
+      writeEnabled: boolean;
+    };
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
       ok: true,
       baseId: "appNew",
       tableName: "Tasks",
+      writeEnabled: false,
     });
     expect(verifyAirtableConnection).not.toHaveBeenCalled();
     expect(prisma.integrationConnection.update).toHaveBeenCalledWith(
@@ -159,5 +171,46 @@ describe("POST /api/integrations/airtable/token", () => {
         },
       })
     );
+  });
+
+  it("leaves Airtable writes disabled when the client does not opt in", async () => {
+    const { auth } = await import("@/lib/auth");
+    const { ensureIntegrationOwnerOrganizationId } = await import("@/lib/integrations/ownership");
+    const { enforcePermission } = await import("@/lib/permissions");
+    const { verifyAirtableConnection } = await import("@/lib/integrations/airtable");
+    const { prisma } = await import("@/lib/prisma");
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "user-1", organizationId: "org-1" },
+    } as never);
+    vi.mocked(ensureIntegrationOwnerOrganizationId).mockResolvedValue("org-1");
+    vi.mocked(enforcePermission).mockResolvedValue({ deniedResponse: null } as never);
+    vi.mocked(verifyAirtableConnection).mockResolvedValue({
+      providerAccountId: "appBase123",
+      accountLabel: "appBase123 / Tasks",
+      metadata: { baseId: "appBase123", tableName: "Tasks" },
+    });
+    vi.mocked(prisma.integrationConnection.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.integrationConnection.upsert).mockResolvedValue({} as never);
+
+    const { POST } = await import("@/app/api/integrations/airtable/token/route");
+    const request = new Request("http://localhost/api/integrations/airtable/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: "pat123",
+        baseId: "appBase123",
+        tableName: "Tasks",
+      }),
+    }) as unknown as NextRequest;
+
+    const response = await POST(request);
+    const body = (await response.json()) as { writeEnabled: boolean };
+
+    expect(body.writeEnabled).toBe(false);
+    const call = vi.mocked(prisma.integrationConnection.upsert).mock.calls.at(-1)?.[0] as {
+      create: { metadata: Record<string, unknown> };
+    };
+    expect(call.create.metadata.writeEnabled).toBe(false);
   });
 });

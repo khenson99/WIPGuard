@@ -1,7 +1,7 @@
 import { IntegrationProvider, TaskStatus, type Prisma } from "@/generated/prisma/client";
 import {
   createAirtableTaskRecord,
-  getAirtableTaskConfigForUser,
+  getAirtableWriteConfigForUser,
   isAirtableRecordId,
   updateAirtableTaskRecord,
 } from "@/lib/integrations/airtable";
@@ -202,7 +202,7 @@ async function resolveAutomationActor(runId: string): Promise<string> {
 
 async function createTaskFromAction(runId: string, payload: Record<string, unknown>) {
   const actorUserId = await resolveAutomationActor(runId);
-  const airtableConfig = await getAirtableTaskConfigForUser(actorUserId);
+  const airtableConfig = await getAirtableWriteConfigForUser(actorUserId);
 
   if (airtableConfig) {
     const task = await createAirtableTaskRecord({
@@ -280,7 +280,7 @@ async function updateTaskFromAction(payload: Record<string, unknown>) {
   const actorUserId = runId ? await resolveAutomationActor(runId).catch(() => null) : null;
   const airtableRecordId = asString(payload.airtableRecordId) ?? taskId;
   if (actorUserId && isAirtableRecordId(airtableRecordId)) {
-    const airtableConfig = await getAirtableTaskConfigForUser(actorUserId);
+    const airtableConfig = await getAirtableWriteConfigForUser(actorUserId);
     if (airtableConfig) {
       const task = await updateAirtableTaskRecord({
         userId: actorUserId,

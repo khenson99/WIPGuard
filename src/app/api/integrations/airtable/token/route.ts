@@ -22,6 +22,28 @@ interface ConnectAirtableBody {
   token?: string;
   baseId?: string;
   tableName?: string;
+  writeEnabled?: boolean;
+}
+
+/**
+ * Airtable writes stay OFF unless the caller explicitly opts in.
+ * On update we preserve whatever was already stored when the field is omitted;
+ * on create an omitted field means false. Never infer true.
+ */
+function resolveWriteEnabledForWrite(
+  body: ConnectAirtableBody,
+  existingMetadata: unknown
+): boolean {
+  if (typeof body.writeEnabled === "boolean") {
+    return body.writeEnabled;
+  }
+  const existing =
+    existingMetadata &&
+    typeof existingMetadata === "object" &&
+    !Array.isArray(existingMetadata)
+      ? (existingMetadata as Record<string, unknown>).writeEnabled
+      : undefined;
+  return existing === true;
 }
 
 function asMetadataObject(metadata: unknown): Prisma.InputJsonObject {
@@ -97,10 +119,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         );
       }
 
+      const writeEnabled = resolveWriteEnabledForWrite(body, connection.metadata);
       const metadata: Prisma.InputJsonObject = {
         ...asMetadataObject(connection.metadata),
         baseId,
         tableName,
+        writeEnabled,
       };
 
       await prisma.integrationConnection.update({
@@ -113,10 +137,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         data: { metadata },
       });
 
-      return NextResponse.json({ ok: true, baseId, tableName });
+      return NextResponse.json({ ok: true, baseId, tableName, writeEnabled });
     }
 
     const profile = await verifyAirtableConnection({ token, baseId, tableName });
+    const writeEnabled = resolveWriteEnabledForWrite(body, connection?.metadata);
     const metadata: Prisma.InputJsonObject = {
       ...(profile.metadata ?? {}),
       ...asMetadataObject(connection?.metadata),
@@ -124,6 +149,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       connectedByUserId: session.user.id,
       baseId,
       tableName,
+      writeEnabled,
     };
 
     await prisma.integrationConnection.upsert({
@@ -163,7 +189,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
     });
 
-    return NextResponse.json({ ok: true, baseId, tableName });
+    return NextResponse.json({ ok: true, baseId, tableName, writeEnabled });
   } catch (error) {
     console.error("POST /api/integrations/airtable/token error:", error);
     return NextResponse.json(

@@ -79,6 +79,8 @@ interface ProviderCardProps {
   onAirtableTokenChange?: (value: string) => void;
   onAirtableBaseIdChange?: (value: string) => void;
   onAirtableTableNameChange?: (value: string) => void;
+  airtableWriteEnabled?: boolean;
+  onAirtableWriteEnabledChange?: (value: boolean) => void;
   onConnectAirtable?: () => Promise<void>;
   semrushToken?: string;
   semrushDomain?: string;
@@ -138,6 +140,8 @@ export function ProviderCard({
   onAirtableTokenChange,
   onAirtableBaseIdChange,
   onAirtableTableNameChange,
+  airtableWriteEnabled,
+  onAirtableWriteEnabledChange,
   onConnectAirtable,
   pylonToken,
   pylonBaseUrl,
@@ -472,6 +476,26 @@ export function ProviderCard({
                   />
                 </label>
               </div>
+              <label className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2.5">
+                <input
+                  type="checkbox"
+                  checked={airtableWriteEnabled ?? false}
+                  onChange={(event) => onAirtableWriteEnabledChange?.(event.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5"
+                />
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    Allow writes to Airtable
+                  </span>
+                  <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] uppercase tracking-wide">
+                    Off by default
+                  </span>
+                  <br />
+                  Airtable is treated as an upstream source of truth. While this is off, the
+                  connection is read-only and automations will not create or update Airtable
+                  records.
+                </span>
+              </label>
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"

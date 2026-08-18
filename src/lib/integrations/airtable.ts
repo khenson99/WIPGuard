@@ -25,6 +25,42 @@ function metadataString(metadata: unknown, key: string): string | null {
   return asTrimmedString(record[key]);
 }
 
+function metadataBoolean(metadata: unknown, key: string): boolean | null {
+  const record = asRecord(metadata);
+  if (!record) return null;
+  const value = record[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+  }
+  return null;
+}
+
+function envFlagEnabled(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "true" || normalized === "1";
+}
+
+/**
+ * Writes to Airtable are OFF unless explicitly opted in.
+ *
+ * Airtable is treated as an upstream source of truth, so this integration must never
+ * push to it by default. Resolution is deliberately fail-closed: an explicit per-connection
+ * flag wins, then the server-wide AIRTABLE_WRITES_ENABLED env var, otherwise false.
+ * Anything unrecognised (absent, null, "yes", garbage) resolves to false.
+ */
+export function resolveAirtableWriteEnabled(metadata: unknown): boolean {
+  return (
+    metadataBoolean(metadata, "writeEnabled") ??
+    envFlagEnabled(process.env.AIRTABLE_WRITES_ENABLED)
+  );
+}
+
+export const AIRTABLE_WRITES_DISABLED_MESSAGE =
+  "Airtable writes are disabled for this connection. Enable \"Allow writes to Airtable\" in integration settings to turn them on.";
+
 function airtableErrorMessage(raw: unknown, status: number): string {
   const record = asRecord(raw);
   const nested = asRecord(record?.error);
@@ -61,6 +97,7 @@ export interface AirtableTaskConfig {
   responsibleIdField: string;
   automationRunIdField: string;
   automationActionField: string;
+  writeEnabled: boolean;
 }
 
 function resolveFieldName(
@@ -200,7 +237,20 @@ export async function getAirtableTaskConfigForUser(
       "AIRTABLE_AUTOMATION_ACTION_FIELD",
       "Automation Action"
     ),
+    writeEnabled: resolveAirtableWriteEnabled(metadata),
   };
+}
+
+/**
+ * Config for write paths only. Returns null when the connection exists but writes have not
+ * been explicitly enabled, so callers fall through to their non-Airtable behaviour instead
+ * of erroring. Read paths should keep using getAirtableTaskConfigForUser.
+ */
+export async function getAirtableWriteConfigForUser(
+  userId: string
+): Promise<AirtableTaskConfig | null> {
+  const config = await getAirtableTaskConfigForUser(userId);
+  return config?.writeEnabled ? config : null;
 }
 
 function buildTaskFields(input: {
@@ -237,6 +287,9 @@ export async function createAirtableTaskRecord(input: {
   const config = await getAirtableTaskConfigForUser(input.userId);
   if (!config) {
     throw new Error("Airtable is not configured for automation task writes");
+  }
+  if (!config.writeEnabled) {
+    throw new Error(AIRTABLE_WRITES_DISABLED_MESSAGE);
   }
 
   const title = asTrimmedString(input.payload.title) ?? "Automation task";
@@ -286,6 +339,9 @@ export async function updateAirtableTaskRecord(input: {
   const config = await getAirtableTaskConfigForUser(input.userId);
   if (!config) {
     throw new Error("Airtable is not configured for automation task writes");
+  }
+  if (!config.writeEnabled) {
+    throw new Error(AIRTABLE_WRITES_DISABLED_MESSAGE);
   }
 
   const title = asTrimmedString(input.payload.title) ?? "Airtable task";

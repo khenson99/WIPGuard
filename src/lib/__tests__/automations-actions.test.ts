@@ -3,7 +3,7 @@ import { TaskStatus } from "@/generated/prisma/client";
 import { executeAutomationAction } from "@/lib/automations/actions";
 import {
   createAirtableTaskRecord,
-  getAirtableTaskConfigForUser,
+  getAirtableWriteConfigForUser,
   updateAirtableTaskRecord,
 } from "@/lib/integrations/airtable";
 import { fetchJsonWithResilience } from "@/lib/integrations/http-client";
@@ -34,6 +34,7 @@ vi.mock("@/lib/integrations/token-refresh", () => ({
 vi.mock("@/lib/integrations/airtable", () => ({
   createAirtableTaskRecord: vi.fn(),
   getAirtableTaskConfigForUser: vi.fn(),
+  getAirtableWriteConfigForUser: vi.fn(),
   isAirtableRecordId: vi.fn((value: string | null | undefined) =>
     typeof value === "string" && value.startsWith("rec")
   ),
@@ -52,7 +53,7 @@ vi.mock("@/lib/integrations/slack-notifications", () => ({
 describe("automation actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue(null);
+    vi.mocked(getAirtableWriteConfigForUser).mockResolvedValue(null);
     vi.mocked(prisma.workflowRun.findUnique).mockResolvedValue({
       requestedById: "user_1",
       workflow: {
@@ -102,10 +103,11 @@ describe("automation actions", () => {
   });
 
   it("creates Airtable records when Airtable task config is available", async () => {
-    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue({
+    vi.mocked(getAirtableWriteConfigForUser).mockResolvedValue({
       token: "pat123",
       baseId: "app123",
       tableName: "Tasks",
+      writeEnabled: true,
       titleField: "Title",
       notesField: "Notes",
       statusField: "Status",
@@ -180,10 +182,11 @@ describe("automation actions", () => {
   });
 
   it("updates Airtable-backed tasks when the task id is an Airtable record id", async () => {
-    vi.mocked(getAirtableTaskConfigForUser).mockResolvedValue({
+    vi.mocked(getAirtableWriteConfigForUser).mockResolvedValue({
       token: "pat123",
       baseId: "app123",
       tableName: "Tasks",
+      writeEnabled: true,
       titleField: "Title",
       notesField: "Notes",
       statusField: "Status",

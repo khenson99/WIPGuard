@@ -43,6 +43,7 @@ export interface IntegrationItem {
   docId?: string | null;
   baseId?: string | null;
   tableName?: string | null;
+  writeEnabled?: boolean | null;
   metadata?: Record<string, unknown> | null;
 }
 

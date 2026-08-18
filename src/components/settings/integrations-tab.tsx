@@ -110,6 +110,7 @@ export function IntegrationsTab() {
   const [airtableToken, setAirtableToken] = useState("");
   const [airtableBaseId, setAirtableBaseId] = useState("");
   const [airtableTableName, setAirtableTableName] = useState("");
+  const [airtableWriteEnabled, setAirtableWriteEnabled] = useState(false);
 
   const [semrushToken, setSemrushToken] = useState("");
   const [semrushDomain, setSemrushDomain] = useState("");
@@ -180,6 +181,7 @@ export function IntegrationsTab() {
       const airtable = integrations.find((item) => item.slug === "airtable");
       setAirtableBaseId(airtable?.baseId ?? "");
       setAirtableTableName(airtable?.tableName ?? "");
+      setAirtableWriteEnabled(airtable?.writeEnabled === true);
 
       const pylon = integrations.find((item) => item.slug === "pylon");
       const storedBaseUrl = asRecord(pylon?.metadata ?? null).baseUrl;
@@ -429,7 +431,12 @@ export function IntegrationsTab() {
       const token = airtableToken.trim();
       const baseId = airtableBaseId.trim();
       const tableName = airtableTableName.trim();
-      const payload: { token?: string; baseId?: string; tableName?: string } = {};
+      const payload: {
+        token?: string;
+        baseId?: string;
+        tableName?: string;
+        writeEnabled?: boolean;
+      } = { writeEnabled: airtableWriteEnabled };
 
       if (token) payload.token = token;
       if (baseId) payload.baseId = baseId;
@@ -446,7 +453,7 @@ export function IntegrationsTab() {
       }
 
       const successPayload = (await response.json().catch(() => null)) as
-        | { baseId?: string | null; tableName?: string | null }
+        | { baseId?: string | null; tableName?: string | null; writeEnabled?: boolean | null }
         | null;
 
       setAirtableToken("");
@@ -455,6 +462,9 @@ export function IntegrationsTab() {
       }
       if (typeof successPayload?.tableName === "string") {
         setAirtableTableName(successPayload.tableName);
+      }
+      if (typeof successPayload?.writeEnabled === "boolean") {
+        setAirtableWriteEnabled(successPayload.writeEnabled);
       }
 
       await fetchIntegrations();
@@ -465,7 +475,13 @@ export function IntegrationsTab() {
     } finally {
       setLoadingProviderAction(null);
     }
-  }, [airtableBaseId, airtableTableName, airtableToken, fetchIntegrations]);
+  }, [
+    airtableBaseId,
+    airtableTableName,
+    airtableToken,
+    airtableWriteEnabled,
+    fetchIntegrations,
+  ]);
 
   const connectSemrush = useCallback(async () => {
     setLoadingProviderAction("semrush");
@@ -780,6 +796,8 @@ export function IntegrationsTab() {
               onAirtableTokenChange={setAirtableToken}
               onAirtableBaseIdChange={setAirtableBaseId}
               onAirtableTableNameChange={setAirtableTableName}
+              airtableWriteEnabled={airtableWriteEnabled}
+              onAirtableWriteEnabledChange={setAirtableWriteEnabled}
               onConnectAirtable={connectAirtable}
               semrushToken={semrushToken}
               semrushDomain={semrushDomain}

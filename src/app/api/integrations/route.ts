@@ -11,6 +11,7 @@ import {
   getCredentials,
   hasIntegrationCredential,
 } from "@/lib/analytics/credentials";
+import { resolveAirtableWriteEnabled } from "@/lib/integrations/airtable";
 import {
   evaluateProviderSyncHealth,
   snapshotKeysForIntegrationProvider,
@@ -231,6 +232,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             ? readMetadataString(connection?.metadata ?? null, "baseId") ??
               process.env.AIRTABLE_BASE_ID?.trim() ??
               null
+            : null,
+        writeEnabled:
+          definition.provider === IntegrationProvider.AIRTABLE
+            ? resolveAirtableWriteEnabled(connection?.metadata ?? null)
             : null,
         tableName:
           definition.provider === IntegrationProvider.AIRTABLE
