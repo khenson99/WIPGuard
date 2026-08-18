@@ -1,0 +1,61 @@
+{
+    "rId": "b2f9b272-4aeb-47fa-be20-cd0d2b83bb02",
+    "asOf": {
+        "effective": 1786385241953,
+        "recorded": 1786385241971
+    },
+    "payload": {
+        "eId": "4e77ced2-d8ed-42b5-90f3-c935540ee318",
+        "name": "0260NS",
+        "description": "YG1 - 40584 (E5977024)",
+        "classification": {
+            "type": "CNC Tools",
+            "subType": "Flat End Mill"
+        },
+        "locator": {
+            "facility": "Lichenprecision",
+            "department": "Machining",
+            "location": "Tool Crib"
+        },
+        "minQuantity": {
+            "amount": 2.0,
+            "unit": "each"
+        },
+        "notes": ".375\" 3FL SQ .500 LOC 2.25 RDCD NCK",
+        "primarySupply": {
+            "supplyEId": "834f350e-036b-4365-92c0-54897b652160",
+            "supplier": {
+                "name": "CTC",
+                "eId": "7420128b-3d48-408c-9e48-cb3a3c7aeb94",
+                "affiliateEId": "848c40b3-a5f6-48bc-988d-cc22d19f3058",
+                "retired": false
+            },
+            "name": "CTC",
+            "orderMethod": "EMAIL",
+            "orderQuantity": {
+                "amount": 2.0,
+                "unit": "each"
+            }
+        },
+        "defaultSupply": "CTC",
+        "defaultSupplyEId": "834f350e-036b-4365-92c0-54897b652160",
+        "cardSize": "SMALL",
+        "labelSize": "X_LARGE",
+        "breadcrumbSize": "SMALL",
+        "itemColor": "BLUE",
+        "additionalQrs": [],
+        "labels": []
+    },
+    "metadata": {
+        "tenantId": "2ae2243c-c2dc-4cbc-868a-cd5411bcd909"
+    },
+    "author": "f46854e8-b0c1-701d-a6ff-ee7c1774f908",
+    "oidcSub": "UNDEFINED",
+    "createdBy": "f46854e8-b0c1-701d-a6ff-ee7c1774f908",
+    "createdBySub": "UNDEFINED",
+    "createdAt": {
+        "effective": 1786385241953,
+        "recorded": 1786385241971
+    },
+    "retired": false
+}
